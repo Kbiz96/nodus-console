@@ -8,6 +8,7 @@ const ITEMS = [
   { to: "/mandates", label: "Mandates" },
   { to: "/signals", label: "Signals" },
   { to: "/sources", label: "Sources" },
+  { to: "/spend", label: "Spend" },
   { to: "/search", label: "Search" },
 ];
 

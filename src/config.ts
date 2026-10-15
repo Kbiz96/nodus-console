@@ -9,3 +9,10 @@
 
 export const SUPABASE_URL = "https://wryvidauwmcczbmstsla.supabase.co";
 export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_owO7VMpQG1o5cFoYzD7FYA_bamtSt0U";
+
+// Enrichment credit caps (Apollo, Clay and Vibe Prospecting together). These mirror the `enrichment:`
+// section of config/engine.yaml in the engine repository, which is what actually enforces them; the
+// console only shows them. If you change the caps there, change them here too.
+export const ENRICH_MONTHLY_CAP_CREDITS = 300;
+export const ENRICH_PER_RUN_CAP_CREDITS = 25;
+export const ENRICH_CREDITS_PER_OPPORTUNITY_ESTIMATE = 4;

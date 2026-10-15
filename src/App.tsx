@@ -17,6 +17,7 @@ import Signals from "./pages/Signals.tsx";
 import SignalDetail from "./pages/SignalDetail.tsx";
 import Mandates from "./pages/Mandates.tsx";
 import Sources from "./pages/Sources.tsx";
+import Spend from "./pages/Spend.tsx";
 import Search from "./pages/Search.tsx";
 
 type Access = "checking" | "approved" | "refused" | { error: string };
@@ -87,6 +88,7 @@ export default function App() {
         <Route path="/signals/:id" element={<SignalDetail />} />
         <Route path="/mandates" element={<Mandates />} />
         <Route path="/sources" element={<Sources />} />
+        <Route path="/spend" element={<Spend />} />
         <Route path="/search" element={<Search />} />
         <Route path="*" element={<NotFound what="page" />} />
       </Routes>

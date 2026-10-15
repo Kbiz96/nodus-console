@@ -379,7 +379,103 @@
    }
   ],
   "llm_calls": [],
-  "ai_tasks": []
+  "ai_tasks": [],
+  "opportunity_people": [
+   {
+    "id": "77777777-0000-4000-8000-000000000001",
+    "rank": 1,
+    "why": "Runs disposals for the Ealing portfolio and signed the grid offer.",
+    "found_via": "provider",
+    "warm_path": "You worked with her at Ofgem (LinkedIn connection).",
+    "draft_opener": "Jane, I saw the accepted grid offer at Ealing and have a London buyer looking for exactly 50 MW.",
+    "crm_added_at": null,
+    "people": {
+     "id": "88888888-0000-4000-8000-000000000001",
+     "full_name": "Jane Smith",
+     "role": "Head of Disposals",
+     "business_email": "jane.smith@example.com",
+     "business_phone": "+44 20 7946 0000",
+     "profile_url": "https://www.linkedin.com/in/janesmith-example",
+     "source": "apollo",
+     "source_url": null,
+     "retrieved_at": "2026-10-14T06:00:00Z",
+     "sanctions_status": "clear",
+     "known_to_kuran": true,
+     "email_status": "verified"
+    }
+   },
+   {
+    "id": "77777777-0000-4000-8000-000000000002",
+    "rank": 2,
+    "why": "Named as director in the planning application.",
+    "found_via": "public",
+    "warm_path": null,
+    "draft_opener": null,
+    "crm_added_at": null,
+    "people": {
+     "id": "88888888-0000-4000-8000-000000000002",
+     "full_name": "Hidden Person",
+     "role": "Director",
+     "business_email": "hidden@example.com",
+     "business_phone": null,
+     "profile_url": null,
+     "source": "public",
+     "source_url": "https://example.com/planning.pdf",
+     "retrieved_at": "2026-10-14T06:00:00Z",
+     "sanctions_status": "possible_match",
+     "known_to_kuran": false,
+     "email_status": "unknown"
+    }
+   }
+  ],
+  "enrich_requests": [
+   {
+    "id": "66666666-0000-4000-8000-000000000001",
+    "opportunity_id": "11111111-1111-4111-8111-111111111111",
+    "match_id": null,
+    "origin": "console",
+    "status": "needs_approval",
+    "estimated_credits": 30,
+    "approved_credits": null,
+    "credits_used": 0,
+    "note": "Over the 25-credit per-run cap.",
+    "created_at": "2026-10-15T07:00:00Z",
+    "done_at": null,
+    "opportunities": {
+     "title": "Ealing 50 MW grid-connected site with accepted offer"
+    }
+   },
+   {
+    "id": "66666666-0000-4000-8000-000000000002",
+    "opportunity_id": "11111111-1111-4111-8111-111111111111",
+    "match_id": null,
+    "origin": "auto",
+    "status": "done",
+    "estimated_credits": 4,
+    "approved_credits": null,
+    "credits_used": "6",
+    "note": null,
+    "created_at": "2026-10-14T05:00:00Z",
+    "done_at": "2026-10-14T06:00:00Z",
+    "opportunities": {
+     "title": "Ealing 50 MW grid-connected site with accepted offer"
+    }
+   }
+  ],
+  "provider_spend": [
+   {
+    "at": "2026-10-14T06:00:00Z",
+    "provider": "apollo",
+    "credits": "4",
+    "opportunity_id": "11111111-1111-4111-8111-111111111111"
+   },
+   {
+    "at": "2026-10-14T06:01:00Z",
+    "provider": "clay",
+    "credits": "2",
+    "opportunity_id": "11111111-1111-4111-8111-111111111111"
+   }
+  ]
  },
  "counts": {
   "ai_tasks": 3,

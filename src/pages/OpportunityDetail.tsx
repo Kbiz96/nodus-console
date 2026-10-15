@@ -6,6 +6,7 @@ import { fmtDate, fmtDateTime, fmtMW, fmtNumber, reference } from "../lib/format
 import { GATE_HINT, GATE_LABEL, LINE_LABEL, SIDE_HINT, SIDE_LABEL } from "../lib/labels.ts";
 import { GATE_ORDER, gateBlocker, gateIndex, nextGate } from "../lib/rules.ts";
 import GateControl from "../components/GateControl.tsx";
+import PeoplePanel from "../components/PeoplePanel.tsx";
 import { Confidence, Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, NotFound, SanctionsBadge, useTitle } from "../components/ui.tsx";
 
 interface Opp {
@@ -199,6 +200,8 @@ export default function OpportunityDetail() {
           <p className="muted">No organisation linked yet.</p>
         )}
       </section>
+
+      <PeoplePanel oppId={o.id} heading="Decision makers" />
 
       <section className="stack">
         <h2>Evidence ({signals.length})</h2>

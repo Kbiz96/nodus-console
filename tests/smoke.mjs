@@ -70,6 +70,16 @@ function fake(approved) {
       if (name === "match_export") return json(200, { source: "Nodus Origination Engine", anonymised: true });
       if (name === "gate_advance") return body.p_confirmed ? json(200, "protected") : json(400, { code: "P0001", message: "Please tick the confirmation box" });
       if (name === "mandate_save") return json(200, "dddddddd-0000-4000-8000-000000000001");
+      if (name === "enrich_request") {
+        const ids = body.p_match ? ["11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"] : [body.p_opp];
+        return json(200, ids.map((id) => id === "22222222-2222-4222-8222-222222222222"
+          ? { opportunity: id, ok: false, why: "Still Unverified. Qualify it first: enrichment never runs on unverified items." }
+          : { opportunity: id, ok: true, request: "66666666-0000-4000-8000-000000000003", why: "Queued. People appear here after the next enrichment run." }));
+      }
+      if (name === "enrich_approve") return json(204);
+      if (name === "person_crm_mark") {
+        return json(200, { name: "Jane Smith", role: "Head of Disposals", organisation: "Ealing Power Holdings Limited", email: "jane.smith@example.com", email_status: "verified", phone: "+44 20 7946 0000", linkedin: "https://www.linkedin.com/in/janesmith-example", source: "apollo", retrieved_at: "2026-10-14T06:00:00Z", lawful_basis: "Legitimate interests (B2B)", opportunity: "NOD-11111111" });
+      }
       return json(404, { message: "rpc not mocked" });
     }
     let table = m[2];
@@ -98,6 +108,7 @@ const browser = await chromium.launch();
 try {
   // ---------- approved user, phone width ----------
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, acceptDownloads: true, locale: "en-GB", timezoneId: "Europe/London" });
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
   await ctx.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true));
   await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
   const page = await ctx.newPage();
@@ -146,6 +157,39 @@ try {
   await page.getByRole("button", { name: /Move from Qualified to Protected/ }).click();
   await page.getByText("Moved on to Protected.").waitFor();
   check(rpcCalls.some((c) => c.name === "gate_advance" && c.body.p_confirmed === true && c.body.p_reason === "NCNDA signed today"), "gate_advance called with reason and confirmation");
+
+  // Step 11: decision makers on the opportunity page
+  await page.getByRole("heading", { name: "Decision makers" }).waitFor();
+  check(await page.getByRole("heading", { name: "Jane Smith" }).isVisible(), "people panel lists the decision maker");
+  check(await page.getByText("You know them").isVisible(), "warm path is highlighted");
+  check(await page.getByText("Held by sanctions screening.").isVisible() && (await page.getByText("Hidden Person").count()) === 0, "a held person's name is hidden");
+  check(await page.getByText("Draft first line — for you to edit and send yourself. Nothing is sent.").isVisible(), "draft first line is labelled");
+  check(await page.getByText("Contact details are internal. Nothing identifying leaves Nodus before Protected.").isVisible(), "internal-only notice shows");
+  check(await page.getByRole("button", { name: /^Enrich/ }).isDisabled(), "Enrich is disabled while a request waits for approval");
+  await page.getByRole("button", { name: "Approve 30 credits" }).click();
+  await page.getByText("Approved. It will run at the next enrichment run.").waitFor();
+  check(rpcCalls.some((c) => c.name === "enrich_approve" && c.body.p_credits === 30), "Approve calls enrich_approve with the estimate");
+  const vcf = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Add to CRM" }).click();
+  await page.getByLabel("Details for your CRM").waitFor();
+  check(rpcCalls.some((c) => c.name === "person_crm_mark"), "Add to CRM calls person_crm_mark");
+  await page.getByRole("button", { name: "Download contact card (.vcf)" }).click();
+  check((await vcf).suggestedFilename() === "jane-smith.vcf", "contact card downloads as a .vcf");
+  await page.screenshot({ path: path.join(shots, "console-people.png"), fullPage: false });
+
+  await page.goto(`${base}#/matches/99999999-0000-4000-8000-000000000001`);
+  await page.getByRole("button", { name: "Enrich both sides" }).click();
+  await page.getByText("Still Unverified. Qualify it first").waitFor();
+  check(await page.getByText("Queued. People appear here after the next enrichment run.").first().isVisible(), "Enrich both sides shows each side's reason");
+  check(rpcCalls.some((c) => c.name === "enrich_request" && c.body.p_match === "99999999-0000-4000-8000-000000000001"), "Enrich both sides calls enrich_request with the match");
+
+  await page.goto(`${base}#/spend`);
+  await page.getByRole("heading", { name: "Spend", exact: true }).waitFor();
+  check(await page.getByText("6 / 300").isVisible(), "Spend shows credits used against the monthly cap");
+  check(await page.getByRole("heading", { name: "Waiting for your approval (1)" }).isVisible(), "Spend lists requests waiting for approval");
+  check(await page.getByRole("link", { name: "NOD-11111111" }).first().isVisible(), "Spend links opportunities by reference");
+  await page.screenshot({ path: path.join(shots, "console-spend.png"), fullPage: false });
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Spend has no sideways scrolling at phone width");
 
   await page.getByRole("searchbox", { name: "Search everything" }).fill("ealing");
   await page.getByRole("searchbox", { name: "Search everything" }).press("Enter");

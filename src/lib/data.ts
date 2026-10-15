@@ -4,6 +4,7 @@ import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
 import type { SearchAll } from "./types.ts";
+import type { CrmDetails, EnrichResult } from "./enrich.ts";
 
 export const MATCH_CARD_COLS =
   "id,status,total_score,scores,thesis,explanation,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
@@ -70,6 +71,23 @@ export async function mandateSave(m: {
   ) as string;
 }
 
+/** Ask for decision makers on one opportunity, or on both sides of a match. Refusals come back with a plain reason. */
+export async function enrichRequest(target: { opp: string } | { match: string }): Promise<EnrichResult[]> {
+  const args = "opp" in target ? { p_opp: target.opp, p_match: null } : { p_opp: null, p_match: target.match };
+  const d = must(await supabase.rpc("enrich_request", args));
+  return Array.isArray(d) ? (d as EnrichResult[]) : [];
+}
+
+/** Kuran's OK for one request to go over a credit cap (1–200 credits). */
+export async function enrichApprove(id: string, credits: number): Promise<void> {
+  must(await supabase.rpc("enrich_approve", { p_request: id, p_credits: credits }));
+}
+
+/** The "Add to CRM" button: returns the details to paste and marks the person as added. Never writes to the CRM. */
+export async function personCrmMark(linkId: string): Promise<CrmDetails> {
+  return must(await supabase.rpc("person_crm_mark", { p_link: linkId })) as CrmDetails;
+}
+
 /** Is the signed-in email on the approved list? (nodus_is_kuran is granted to signed-in users.) */
 export async function isApproved(): Promise<boolean> {
   return Boolean(must(await supabase.rpc("nodus_is_kuran")));
@@ -77,7 +95,36 @@ export async function isApproved(): Promise<boolean> {
 
 /** Save a JSON value as a file in the browser's downloads. */
 export function downloadJson(value: unknown, filename: string): void {
-  const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json" });
+  downloadText(JSON.stringify(value, null, 2), filename, "application/json");
+}
+
+/** Copy text to the clipboard. Returns false if the browser would not allow it. */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Older browsers, or the click was too long ago: fall back to a hidden text box.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}
+
+/** Save text as a file in the browser's downloads. */
+export function downloadText(text: string, filename: string, type: string): void {
+  const blob = new Blob([text], { type });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

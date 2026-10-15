@@ -1,7 +1,7 @@
 # Nodus console
 
 The private web console for the Nodus Origination Engine: Today, Matches, Opportunities, Organisations,
-Signals, Mandates, Sources and Search. It is a static web page (HTML, CSS and JavaScript only) published
+Signals, Mandates, Sources, Spend and Search. It is a static web page (HTML, CSS and JavaScript only) published
 on GitHub Pages. There is no server of our own: the page runs in your browser and talks straight to the
 Nodus database on Supabase.
 
@@ -13,7 +13,7 @@ Nodus database on Supabase.
   publishable keys to be public: on their own they can read and change nothing.
 - **The database protects itself** (migration `0006_console_security`): Row Level Security lets only
   approved email addresses read, and every change (shortlist, reject, reopen, send to CRM, move a step
-  on, save a mandate) goes through a checked database function that applies the Nodus rules and writes the
+  on, save a mandate, ask for decision makers, approve credits, add a person to the CRM) goes through a checked database function that applies the Nodus rules and writes the
   audit log. When the database refuses something, the console shows its message as written.
 - Search engines are asked not to list it: a `noindex` tag on the page (this is the one that counts on a
   `github.io/nodus-console/` sub-path) plus a `robots.txt`, which takes effect if the site gets its own domain. The address can still be

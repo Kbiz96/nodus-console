@@ -246,3 +246,22 @@ input:focus, select:focus, textarea:focus { outline: 2px solid #9fd0c8; outline-
 button.chip { cursor: pointer; font: inherit; font-size: 0.85rem; }
 .login-card .muted a { color: var(--accent); }
 .note { font-size: 0.85rem; color: var(--muted); }
+
+/* step 11: people and spend */
+.stack-xs { display: flex; flex-direction: column; gap: 0.4rem; }
+.row-between.wrap { flex-wrap: wrap; }
+.pill-wait { background: var(--accent-soft); color: var(--accent); }
+.pill-warn { background: var(--warn-soft); color: var(--warn); }
+.email-verified { background: var(--good-soft); color: var(--good); }
+.email-catch_all { background: var(--warn-soft); color: var(--warn); }
+.email-unknown { background: #eef1f0; color: var(--muted); }
+.person h3 { overflow-wrap: anywhere; }
+.warm-path { display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem; align-items: baseline; background: var(--good-soft); border: 1px solid #c4e3d1; border-radius: 8px; padding: 0.5rem 0.7rem; color: #134d32; font-size: 0.9rem; }
+.draft { border: 1px solid var(--line); background: #fafbfa; border-radius: 8px; padding: 0.6rem 0.75rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.draft-label { font-size: 0.78rem; font-weight: 600; color: var(--ink-2); }
+.draft-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.crm-text { margin: 0; padding: 0.6rem 0.75rem; background: #fafbfa; border: 1px solid var(--line); border-radius: 8px; font: 0.85rem/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+.meter { display: flex; flex-direction: column; gap: 0.3rem; }
+.meter .bar-track { height: 10px; border-radius: 5px; }
+.meter .bar-fill.over { background: var(--bad); }
+.meter .bar-fill.near { background: var(--warn); }
