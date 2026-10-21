@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase.ts";
 import { isApproved } from "./lib/data.ts";
@@ -26,6 +26,13 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [access, setAccess] = useState<Access>("checking");
   const [attempt, setAttempt] = useState(0);
+
+  const location = useLocation();
+  const navigate = useNavigate();
+  // After an emailed sign-in link, the router briefly sees the token fragment as a page; send it to Today.
+  useEffect(() => {
+    if (session && /access_token|refresh_token|type=magiclink/.test(location.pathname)) navigate("/", { replace: true });
+  }, [session, location.pathname, navigate]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));

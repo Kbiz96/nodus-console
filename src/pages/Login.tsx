@@ -8,6 +8,31 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [linkSent, setLinkSent] = useState(false);
+
+  // Forgotten password: email a one-click sign-in link. Only existing approved users get one (no sign-ups).
+  const sendLink = async () => {
+    if (!email.trim()) {
+      setError("Enter your email address first, then press the link button.");
+      return;
+    }
+    setPending(true);
+    setError(null);
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + window.location.pathname },
+    });
+    setPending(false);
+    if (error) {
+      setError(/rate|too many/i.test(error.message)
+        ? "A link was sent very recently. Please wait a few minutes and check your inbox."
+        : /signups? not allowed|not found/i.test(error.message)
+          ? "That email address doesn't have access to this page."
+          : error.message);
+    } else {
+      setLinkSent(true);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -47,6 +72,14 @@ export default function Login() {
             {pending ? "Checking…" : "Sign in"}
           </button>
         </form>
+        <button className="btn" type="button" onClick={sendLink} disabled={pending}>
+          Forgot password? Email me a sign-in link
+        </button>
+        {linkSent && (
+          <p className="muted" role="status">
+            Sent. Open the email from Supabase and tap the link; it signs you straight in.
+          </p>
+        )}
       </div>
     </div>
   );
