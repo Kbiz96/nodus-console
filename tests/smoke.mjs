@@ -42,6 +42,7 @@ const token = `${b64({ alg: "HS256", typ: "JWT" })}.${b64({ sub: user.id, email:
 const session = { access_token: token, token_type: "bearer", expires_in: 3600, expires_at: exp, refresh_token: "refresh-fixture", user };
 
 const rpcCalls = [];
+const writes = [];
 function fake(approved) {
   return async (route) => {
     const req = route.request();
@@ -77,6 +78,8 @@ function fake(approved) {
           : { opportunity: id, ok: true, request: "66666666-0000-4000-8000-000000000003", why: "Queued. People appear here after the next enrichment run." }));
       }
       if (name === "enrich_approve") return json(204);
+      if (name === "outreach_decide") return json(204);
+      if (name === "crm_import") return json(200, { contacts: 1, deals: 1, actions: 0, outreach: 2, mandates: 1 });
       if (name === "person_crm_mark") {
         return json(200, { name: "Jane Smith", role: "Head of Disposals", organisation: "Ealing Power Holdings Limited", email: "jane.smith@example.com", email_status: "verified", phone: "+44 20 7946 0000", linkedin: "https://www.linkedin.com/in/janesmith-example", source: "apollo", retrieved_at: "2026-10-14T06:00:00Z", lawful_basis: "Legitimate interests (B2B)", opportunity: "NOD-11111111" });
       }
@@ -90,6 +93,9 @@ function fake(approved) {
     if (idEq?.startsWith("eq.")) rows = rows.filter((r) => r.id === idEq.slice(3));
     const lineEq = u.searchParams.get("line");
     if (lineEq?.startsWith("eq.")) rows = rows.filter((r) => r.line === lineEq.slice(3));
+    const statusEq = u.searchParams.get("status");
+    if (statusEq?.startsWith("eq.")) rows = rows.filter((r) => r.status === statusEq.slice(3));
+    if (req.method() === "PATCH") { writes.push({ table, url: u.search, body: req.postDataJSON?.() ?? {} }); return json(200, rows.slice(0, 1)); }
     const prefer = req.headers()["prefer"] ?? "";
     const n = fx.counts[table] ?? rows.length;
     const headers = prefer.includes("count=") ? { "content-range": rows.length ? `0-${rows.length - 1}/${n}` : `*/${n}` } : {};
@@ -201,6 +207,66 @@ try {
   await page.getByRole("link", { name: "Ealing Power Holdings Limited" }).click();
   await page.getByRole("heading", { name: "Ealing Power Holdings Limited" }).waitFor();
   check(true, "search result links to the organisation page");
+
+  // ---------- CRM (merged from the old HQ) ----------
+  await page.goto(base);
+  await page.getByRole("heading", { name: "Approve (1)" }).waitFor();
+  check(await page.locator(".nav-count").first().textContent() === "1", "Today shows a drafts badge in the nav");
+  check(await page.getByRole("heading", { name: "LinkedIn to send (1)" }).isVisible(), "Today lists LinkedIn to send");
+  check(await page.getByText("Chase the NCNDA").isVisible(), "Today lists actions to do first");
+  check(await page.getByRole("link", { name: "Example 20 MW gensets" }).isVisible(), "Today lists deals due");
+  await page.screenshot({ path: path.join(shots, "console-today-crm.png"), fullPage: false });
+  await page.locator(".outreach textarea").first().fill("Hello Alex,\nEdited.");
+  await page.getByRole("button", { name: "Save edit" }).click();
+  await page.getByText("Edit saved.").waitFor();
+  check(rpcCalls.some((c) => c.name === "outreach_decide" && c.body.p_decision === "edit" && c.body.p_body === "Hello Alex,\nEdited."), "Save edit calls outreach_decide with the new text");
+  await page.getByRole("button", { name: "Approve", exact: true }).first().click();
+  await page.getByText("Approved. The send job").waitFor();
+  check(rpcCalls.some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve"), "Approve calls outreach_decide");
+  await page.getByRole("button", { name: "Mark sent" }).click();
+  await page.waitForTimeout(300);
+  check(writes.some((w) => w.table === "outreach" && w.body.status === "sent" && w.body.sent_at), "Mark sent sets status sent and sent_at");
+  await page.getByRole("checkbox", { name: /Chase the NCNDA/ }).click();
+  await page.waitForTimeout(300);
+  check(writes.some((w) => w.table === "crm_actions" && w.body.status === "done"), "ticking an action marks it done");
+
+  await page.goto(`${base}#/contacts`);
+  await page.getByRole("heading", { name: "Contacts", exact: true }).waitFor();
+  await page.getByRole("button", { name: "Alex Example" }).click();
+  await page.getByLabel("Add a note").fill("Called, wants pricing");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Saved.").waitFor();
+  const cw = writes.find((w) => w.table === "crm_contacts");
+  check(Boolean(cw && /^2026-10-01: Met at DCD\n\d{4}-\d{2}-\d{2}: Called, wants pricing$/.test(cw.body.notes)), "contact note is appended with a date");
+  check(await page.getByText("Bridge power for your Ealing build").isVisible(), "contact panel shows outreach history");
+  await page.screenshot({ path: path.join(shots, "console-contacts.png"), fullPage: false });
+
+  await page.goto(`${base}#/deals`);
+  await page.getByRole("heading", { name: "Deals", exact: true }).waitFor();
+  await page.getByText("gates 1/5").first().waitFor();
+  check(true, "deal shows its gate score");
+  await page.getByRole("button", { name: "Example 20 MW gensets" }).click();
+  await page.locator(".detail-panel select").nth(1).selectOption("Protected");
+  await page.getByText("Protected needs NCNDA signed and Fee agreement signed to be Yes first.").waitFor();
+  check(await page.locator(".detail-panel").getByRole("button", { name: "Save", exact: true }).isDisabled(), "Protected is blocked until NCNDA and fee are signed");
+  await page.screenshot({ path: path.join(shots, "console-deals.png"), fullPage: false });
+
+  await page.goto(`${base}#/outreach?status=manual`);
+  await page.getByRole("heading", { name: "Outreach", exact: true }).waitFor();
+  await page.getByRole("link", { name: "LinkedIn to send (1)" }).waitFor();
+  check(true, "Outreach tabs show counts");
+
+  await page.goto(`${base}#/mandates`);
+  await page.getByText("Partial", { exact: true }).first().waitFor();
+  check(await page.getByText("$20–50m").isVisible(), "mandate card fields show");
+
+  await page.goto(`${base}#/import`);
+  await page.getByText("One-off: brings your old HQ contacts").waitFor();
+  await page.locator('input[type="file"]').setInputFiles({ name: "hq.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify({ export: "nodus-hq", date: "2026-10-22", contacts: [{}], deals: [], actions: [], outreach: [], mandates: [] })) });
+  await page.getByRole("button", { name: "Import now" }).click();
+  await page.getByText("Imported.").waitFor();
+  check(rpcCalls.some((c) => c.name === "crm_import" && c.body.p?.export === "nodus-hq"), "Import sends the parsed file to crm_import");
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "CRM pages have no sideways scrolling at phone width");
 
   for (const [hash, heading] of [["#/matches", "Matches"], ["#/signals", "Signals"], ["#/mandates", "Mandates"], ["#/sources", "Sources"]]) {
     await page.goto(`${base}${hash}`);

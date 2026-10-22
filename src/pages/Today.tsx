@@ -6,6 +6,7 @@ import { fmtDateTime, fmtGBP, fmtNumber, ukDayStartIso, ukMonthStart } from "../
 import { LINES, LINE_LABEL } from "../lib/labels.ts";
 import type { MatchCardRow } from "../lib/types.ts";
 import MatchCard from "../components/MatchCard.tsx";
+import TodayCrm from "../components/TodayCrm.tsx";
 import { Confidence, Empty, ErrorBox, ExtLink, LineBadge, Loading, useTitle } from "../components/ui.tsx";
 
 interface Blocked {
@@ -79,6 +80,20 @@ async function load() {
 
 export default function Today() {
   useTitle("Today");
+  return (
+    <div className="stack-lg">
+      <div className="section-head">
+        <h1>Today</h1>
+        <p className="muted">Your approvals, actions and deals due first; then what the engine found.</p>
+      </div>
+      <TodayCrm />
+      <EngineToday />
+    </div>
+  );
+}
+
+/** The engine's part of Today (matches, signals, blocked items), loaded separately so one cannot hide the other. */
+function EngineToday() {
   const { data, error, loading, reload } = useLoad(load, "today");
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (loading && !data) return <Loading />;
@@ -86,10 +101,10 @@ export default function Today() {
   const { matches, byLine, otherCount, newTotal, topSignals, blocked, aiQueue, spend } = data;
 
   return (
-    <div className="stack-lg">
+    <>
       <section>
         <div className="section-head">
-          <h1>Today</h1>
+          <h2>Engine</h2>
           <p className="muted">The ten strongest matches waiting for a decision, best first.</p>
         </div>
         <div className="stats">
@@ -196,6 +211,6 @@ export default function Today() {
           </ul>
         )}
       </section>
-    </div>
+    </>
   );
 }

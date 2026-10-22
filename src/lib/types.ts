@@ -42,3 +42,86 @@ export interface SearchAll {
   matches: { id: string; title: string | null; total_score: number; status: string; at: string | null }[];
   mandates: { id: string; title: string; line: string; active: boolean; at: string | null }[];
 }
+
+// ---------- CRM (merged from the old Nodus HQ) ----------
+
+export interface CrmContact {
+  id: string;
+  name: string | null;
+  title: string | null;
+  company: string | null;
+  email: string | null;
+  linkedin: string | null;
+  country: string | null;
+  lines: string[] | null;
+  side: string | null;
+  category: string | null;
+  stage: string | null;
+  priority: string | null;
+  channel: string | null;
+  source: string | null;
+  signal: string | null;
+  first_contact: string | null;
+  last_activity: string | null;
+  next_follow_up: string | null;
+  do_not_contact: boolean | null;
+  notes: string | null;
+  updated_at: string | null;
+}
+
+export interface Deal {
+  id: string;
+  deal: string | null;
+  contact_id: string | null;
+  counterparty: string | null;
+  line: string | null;
+  heat: string | null;
+  rank: number | null;
+  stage: string | null;
+  principal_verified: string | null;
+  ncnda_signed: string | null;
+  fee_signed: string | null;
+  kyc_done: string | null;
+  proof_done: string | null;
+  next_date: string | null;
+  next_step: string | null;
+  value: string | null;
+  terms: string | null;
+  notes: string | null;
+  updated_at: string | null;
+}
+
+export interface CrmAction {
+  id: string;
+  title: string | null;
+  detail: string | null;
+  priority: string | null;
+  due: string | null;
+  category: string | null;
+  status: string;
+  contact_id: string | null;
+  deal_id: string | null;
+  link: string | null;
+  focus_rank: number | null;
+}
+
+export interface Outreach {
+  id: string;
+  kind: string | null;
+  channel: string | null;
+  contact_id: string | null;
+  to_name: string | null;
+  to_email: string | null;
+  company: string | null;
+  subject: string | null;
+  body: string | null;
+  link: string | null;
+  sequence_step: number | null;
+  status: string;
+  note: string | null;
+  origin: string | null;
+  created_at: string;
+  approved_at: string | null;
+  sent_at: string | null;
+  replied_at: string | null;
+}

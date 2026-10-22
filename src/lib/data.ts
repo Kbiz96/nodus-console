@@ -134,3 +134,50 @@ export function downloadText(text: string, filename: string, type: string): void
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// ---------- CRM writes ----------
+// Outreach decisions always go through the outreach_decide database function.
+
+/** A direct update that changed no rows was refused (or the record is gone): say so rather than pretend. */
+function mustChange(res: { data: unknown; error: { message: string; code?: string } | null }, what: string): void {
+  const rows = must(res as { data: unknown[] | null; error: { message: string; code?: string } | null });
+  if (!rows || rows.length === 0) throw new Error(`${what} was not saved. It may have changed or been removed; reload and try again.`);
+}
+
+export async function outreachDecide(id: string, decision: "approve" | "skip" | "edit", subject?: string | null, body?: string | null): Promise<void> {
+  must(await supabase.rpc("outreach_decide", { p_id: id, p_decision: decision, p_subject: subject ?? null, p_body: body ?? null }));
+}
+
+/** Kuran has sent a LinkedIn item himself. The one direct status update the console makes. */
+export async function outreachMarkSent(id: string): Promise<void> {
+  mustChange(await supabase.from("outreach").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "manual").select("id"), "This message");
+}
+
+export async function actionSetStatus(id: string, status: "open" | "done" | "dismissed"): Promise<void> {
+  mustChange(await supabase.from("crm_actions").update({ status, updated_at: new Date().toISOString() }).eq("id", id).select("id"), "This action");
+}
+
+export async function contactUpdate(id: string, patch: Record<string, unknown>): Promise<void> {
+  mustChange(await supabase.from("crm_contacts").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("id"), "The contact");
+}
+
+export async function dealUpdate(id: string, patch: Record<string, unknown>): Promise<void> {
+  mustChange(await supabase.from("deals").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", id).select("id"), "The deal");
+}
+
+export async function mandateCardUpdate(
+  id: string,
+  patch: { kind: string | null; holder: string | null; confidence: string | null; to_ask: string | null; card: Record<string, unknown> },
+): Promise<void> {
+  mustChange(await supabase.from("mandates").update(patch).eq("id", id).select("id"), "The mandate card");
+}
+
+/** One-off import of the old HQ export. The file is sent only to this database function. */
+export async function crmImport(p: unknown): Promise<Record<string, unknown>> {
+  return (must(await supabase.rpc("crm_import", { p })) ?? {}) as Record<string, unknown>;
+}
+
+/** Tell the nav that outreach changed, so the drafts badge refreshes. */
+export function outreachChanged(): void {
+  window.dispatchEvent(new Event("nodus-outreach-changed"));
+}

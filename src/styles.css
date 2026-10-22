@@ -265,3 +265,29 @@ button.chip { cursor: pointer; font: inherit; font-size: 0.85rem; }
 .meter .bar-track { height: 10px; border-radius: 5px; }
 .meter .bar-fill.over { background: var(--bad); }
 .meter .bar-fill.near { background: var(--warn); }
+
+/* CRM (contacts, deals, outreach, actions) */
+.nav-count { display: inline-block; margin-left: 0.35rem; min-width: 1.3rem; padding: 0 0.35rem; border-radius: 999px; background: #7fc4b8; color: var(--brand); font-size: 0.72rem; font-weight: 700; text-align: center; line-height: 1.3rem; }
+.row-link { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.row-link:hover { text-decoration: underline; }
+.row-selected td, .list-item.row-selected { background: var(--accent-soft); }
+.detail-panel { position: relative; }
+@media (min-width: 900px) { .detail-panel { position: sticky; top: 7rem; max-height: calc(100vh - 8rem); overflow-y: auto; } }
+.outreach textarea { font-size: 15px; line-height: 1.45; }
+.list-item input.tick { width: 22px; height: 22px; padding: 0; margin-top: 0.1rem; flex-shrink: 0; cursor: pointer; }
+.heat-hot { background: var(--bad-soft); color: var(--bad); }
+.heat-warm { background: var(--warn-soft); color: var(--warn); }
+.heat-cold { background: #e6ecfb; color: #2f4d9a; }
+.prio-urgent { background: var(--bad-soft); color: var(--bad); }
+.prio-high { background: var(--warn-soft); color: var(--warn); }
+.conf-stated { background: var(--good-soft); color: var(--good); }
+.conf-partial { background: var(--warn-soft); color: var(--warn); }
+.conf-to_ask { background: var(--bad-soft); color: var(--bad); }
+.ostatus-draft { background: var(--warn-soft); color: var(--warn); }
+.ostatus-approved, .ostatus-manual { background: var(--accent-soft); color: var(--accent); }
+.ostatus-sent { background: var(--good-soft); color: var(--good); }
+.ostatus-replied { background: #dff0f6; color: #1c5d78; }
+.ostatus-skipped, .ostatus-expired { background: #eef1f0; color: var(--muted); }
+.ostatus-failed { background: var(--bad-soft); color: var(--bad); }
+.mandate-card { border-top: 1px solid var(--line); padding-top: 0.6rem; margin-top: 0.6rem; }
+.filters .check { flex: 0 0 auto; align-self: center; }

@@ -19,6 +19,10 @@ import Mandates from "./pages/Mandates.tsx";
 import Sources from "./pages/Sources.tsx";
 import Spend from "./pages/Spend.tsx";
 import Search from "./pages/Search.tsx";
+import Contacts from "./pages/Contacts.tsx";
+import Deals from "./pages/Deals.tsx";
+import Outreach from "./pages/Outreach.tsx";
+import Import from "./pages/Import.tsx";
 
 type Access = "checking" | "approved" | "refused" | { error: string };
 
@@ -97,6 +101,10 @@ export default function App() {
         <Route path="/sources" element={<Sources />} />
         <Route path="/spend" element={<Spend />} />
         <Route path="/search" element={<Search />} />
+        <Route path="/contacts" element={<Contacts />} />
+        <Route path="/deals" element={<Deals />} />
+        <Route path="/outreach" element={<Outreach />} />
+        <Route path="/import" element={<Import />} />
         <Route path="*" element={<NotFound what="page" />} />
       </Routes>
     </Layout>
