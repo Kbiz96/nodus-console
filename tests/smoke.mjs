@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { synthetic } from "./fixtures/synthetic.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
@@ -21,7 +22,7 @@ for (const p of ["playwright", "/opt/node-tools/node_modules/playwright"]) {
 if (!chromium) throw new Error("Playwright is not available");
 
 // ---- static server for dist/ under /nodus-console/ ----
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".txt": "text/plain" };
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".txt": "text/plain", ".woff2": "font/woff2", ".woff": "font/woff" };
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, "http://x");
   if (!u.pathname.startsWith("/nodus-console/")) { res.writeHead(404); return res.end(); }
@@ -43,7 +44,7 @@ const session = { access_token: token, token_type: "bearer", expires_in: 3600, e
 
 const rpcCalls = [];
 const writes = [];
-function fake(approved) {
+function fake(approved, data = fx) {
   return async (route) => {
     const req = route.request();
     const u = new URL(req.url());
@@ -90,16 +91,20 @@ function fake(approved) {
     let table = m[2];
     if (!approved) return json(200, [], { "content-range": "*/0" });
     if (table === "audit_log" && u.searchParams.get("action") === "eq.gate_change") table = "gate_history";
-    let rows = fx.tables[table] ?? [];
+    let rows = data.tables[table] ?? [];
     const idEq = u.searchParams.get("id");
     if (idEq?.startsWith("eq.")) rows = rows.filter((r) => r.id === idEq.slice(3));
     const lineEq = u.searchParams.get("line");
     if (lineEq?.startsWith("eq.")) rows = rows.filter((r) => r.line === lineEq.slice(3));
     const statusEq = u.searchParams.get("status");
     if (statusEq?.startsWith("eq.")) rows = rows.filter((r) => r.status === statusEq.slice(3));
+    if (statusEq?.startsWith("in.(")) { const set = statusEq.slice(4, -1).split(","); rows = rows.filter((r) => !r.status || set.includes(r.status)); }
     if (req.method() === "PATCH") { writes.push({ table, url: u.search, body: req.postDataJSON?.() ?? {} }); return json(200, rows.slice(0, 1)); }
     const prefer = req.headers()["prefer"] ?? "";
-    const n = fx.counts[table] ?? rows.length;
+    const n = data.counts[table] ?? rows.length;
+    const lim = Number(u.searchParams.get("limit"));
+    const off = Number(u.searchParams.get("offset")) || 0;
+    if (lim > 0 || off > 0) rows = rows.slice(off, lim > 0 ? off + lim : undefined);
     const headers = prefer.includes("count=") ? { "content-range": rows.length ? `0-${rows.length - 1}/${n}` : `*/${n}` } : {};
     if (req.method() === "HEAD") return route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*", "access-control-expose-headers": "content-range", ...headers } });
     const accept = req.headers()["accept"] ?? "";
@@ -112,8 +117,9 @@ const failures = [];
 const check = (ok, what) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failures.push(what); };
 fs.mkdirSync(shots, { recursive: true });
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
 try {
+  if (!process.env.SMOKE_SHOTS_ONLY) {
   // ---------- approved user, phone width ----------
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, acceptDownloads: true, locale: "en-GB", timezoneId: "Europe/London" });
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -213,6 +219,7 @@ try {
   await page.screenshot({ path: path.join(shots, "console-spend.png"), fullPage: false });
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Spend has no sideways scrolling at phone width");
 
+  await page.getByRole("button", { name: "Search", exact: true }).click();
   await page.getByRole("searchbox", { name: "Search everything" }).fill("ealing");
   await page.getByRole("searchbox", { name: "Search everything" }).press("Enter");
   await page.getByRole("heading", { name: "Search" }).waitFor();
@@ -284,6 +291,31 @@ try {
   check(rpcCalls.some((c) => c.name === "crm_import" && c.body.p?.export === "nodus-hq"), "Import sends the parsed file to crm_import");
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "CRM pages have no sideways scrolling at phone width");
 
+  // ---------- Map and Engine (phone) ----------
+  await page.goto(`${base}#/map`);
+  await page.getByRole("heading", { name: "Map", exact: true }).waitFor();
+  await page.getByText("By region").waitFor();
+  check(await page.locator(".maplibregl-canvas").count() === 1 || await page.locator(".map-note").count() > 0, "Map draws a map canvas (or explains why not)");
+  check(rpcCalls.length > 0 && await page.getByRole("button", { name: "Critical power" }).isVisible(), "Map shows line filters");
+  await page.getByRole("button", { name: "UK" }).click();
+  check(/region=UK/.test(page.url()), "Map region filter is kept in the address");
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Map has no sideways scrolling at phone width");
+
+  await page.goto(`${base}#/engine`);
+  await page.getByRole("heading", { name: "Engine", exact: true }).waitFor();
+  await page.locator(".engine-svg .link").first().waitFor({ state: "attached" });
+  check(await page.locator(".engine-svg .link").count() >= 1, "Engine draws match lines");
+  await page.getByRole("list", { name: "Strongest matches" }).getByRole("button").first().click();
+  await page.getByText("Score breakdown").waitFor();
+  await page.locator(".engine-panel .bar-row").nth(5).waitFor();
+  check(await page.locator(".engine-panel .bar-row").count() >= 6, "Engine shows the score breakdown");
+  await page.locator(".engine-panel").getByRole("button", { name: "Shortlist" }).click();
+  await page.locator(".engine-panel").getByText("Shortlisted.").waitFor();
+  check(rpcCalls.filter((c) => c.name === "match_decide" && c.body.p_action === "shortlist").length >= 2, "Shortlist works from the engine view");
+  await page.locator(".engine-panel").getByRole("button", { name: "Reject…" }).click();
+  check(await page.locator(".engine-panel").getByRole("button", { name: "Confirm reject" }).isDisabled(), "Engine reject needs a reason");
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Engine has no sideways scrolling at phone width");
+
   for (const [hash, heading] of [["#/matches", "Matches"], ["#/signals", "Signals"], ["#/mandates", "Mandates"], ["#/sources", "Sources"]]) {
     await page.goto(`${base}${hash}`);
     await page.getByRole("heading", { name: heading, exact: true }).waitFor();
@@ -304,6 +336,93 @@ try {
   await p2.getByText("This account isn't approved for the Nodus console.").waitFor();
   check(true, "unapproved account sees the not-approved message");
   await ctx2.close();
+  }
+
+  // ---------- screenshots with fuller fake data: desktop 1440 and phone 390 ----------
+  const syn = synthetic();
+  const big = {
+    ...fx,
+    tables: {
+      ...fx.tables,
+      opportunities: [...fx.tables.opportunities, ...syn.opportunities],
+      v_match_cards: [...fx.tables.v_match_cards, ...syn.matches],
+      matches: syn.matches.map((m) => ({ id: m.id, status: m.status, total_score: m.total_score, supply_opportunity_id: m.supply_id, need_opportunity_id: m.need_id })),
+      mandates: [...fx.tables.mandates, ...syn.mandates],
+      deals: [...fx.tables.deals, ...syn.deals],
+      connector_runs: [{ finished_at: new Date(Date.now() - 5 * 3600e3).toISOString() }],
+    },
+    counts: { ...fx.counts, sources: 41 },
+  };
+  const passes = [["desktop", { width: 1440, height: 900 }], ["phone", { width: 390, height: 844 }]].filter(([n]) => !process.env.SMOKE_PASS || process.env.SMOKE_PASS === n);
+  for (const [name, viewport] of passes) {
+    const c = await browser.newContext({ viewport, deviceScaleFactor: 2, locale: "en-GB", timezoneId: "Europe/London" });
+    await c.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true, big));
+    await c.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
+    await c.addInitScript((s) => localStorage.setItem("nodus-console-auth", JSON.stringify(s)), session);
+    const p = await c.newPage();
+    const errs = [];
+    p.on("pageerror", (e) => errs.push(String(e)));
+    if (process.env.SMOKE_DEBUG) p.on("console", (m) => m.type() !== "log" && console.log(`  [${name} console ${m.type()}] ${m.text().slice(0, 400)}`));
+    await p.goto(base);
+    await p.getByRole("heading", { name: "Today", exact: true }).waitFor();
+    await p.getByRole("heading", { name: "Pipeline" }).waitFor();
+    await p.waitForTimeout(900);
+    await p.screenshot({ path: path.join(shots, `today-${name}.png`) });
+    if (name === "desktop") await p.screenshot({ path: path.join(shots, `today-${name}-full.png`), fullPage: true });
+
+    await p.goto(`${base}#/map`);
+    await p.getByText("By region").waitFor();
+    await p.waitForTimeout(3500);
+    check(await p.locator(".cluster-marker").count() > 0 || await p.locator(".map-note").count() > 0, `Map clusters render (${name})`);
+    await p.screenshot({ path: path.join(shots, `map-${name}.png`), fullPage: name === "phone" });
+    const pt = await p.evaluate(() => {
+      const el = document.querySelector(".mapx-canvas");
+      return el ? { w: el.clientWidth, h: el.clientHeight } : null;
+    });
+    if (name === "desktop" && pt) {
+      await p.goto(`${base}#/map?region=USA`);
+      await p.waitForTimeout(2500);
+      // click the busiest point under the cursor path until a panel opens
+      for (const [fx2, fy2] of [[0.55, 0.45], [0.5, 0.5], [0.6, 0.4], [0.45, 0.55], [0.65, 0.5], [0.4, 0.45]]) {
+        await p.mouse.click(Math.round(fx2 * 1440), Math.round(40 + fy2 * 860));
+        await p.waitForTimeout(500);
+        if (await p.locator(".map-panel").count()) break;
+      }
+      if (!(await p.locator(".map-panel").count())) {
+        await p.goto(`${base}#/map?region=USA&o=${syn.opportunities.find((o) => o.country === "US" && o.region)?.id}`);
+        await p.waitForTimeout(2500);
+      }
+      check(await p.locator(".map-panel").count() === 1, "Map opens a side panel for a point");
+      await p.screenshot({ path: path.join(shots, "map-desktop-usa-panel.png") });
+    }
+
+    await p.goto(`${base}#/engine`);
+    await p.locator(".engine-svg .link").first().waitFor({ state: "attached" });
+    await p.waitForTimeout(1400);
+    await p.screenshot({ path: path.join(shots, `engine-${name}.png`) });
+    const fbMatch = syn.matches.find((m) => m.explanation.feedback);
+    await p.goto(`${base}#/engine?m=${fbMatch?.id ?? syn.matches[0].id}`);
+    await p.getByText("Score breakdown").waitFor();
+    await p.waitForTimeout(1400);
+    if (name === "phone") await p.locator(".engine-panel").scrollIntoViewIfNeeded();
+    await p.screenshot({ path: path.join(shots, `engine-${name}-selected.png`) });
+
+    await p.goto(`${base}#/matches`);
+    await p.getByRole("heading", { name: "Matches", exact: true }).waitFor();
+    await p.waitForTimeout(400);
+    await p.screenshot({ path: path.join(shots, `matches-${name}.png`) });
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scrolling (${name})`);
+    if (process.env.SMOKE_ALL_PAGES) {
+      for (const h of ["opportunities", "opportunities/11111111-1111-4111-8111-111111111111", "mandates", "deals", "contacts", "outreach", "signals", "sources", "spend", "search?q=ealing", "matches/99999999-0000-4000-8000-000000000001"]) {
+        await p.goto(`${base}#/${h}`);
+        await p.waitForTimeout(900);
+        await p.screenshot({ path: path.join(shots, `other-${h.replace(/[/?=]/g, "_").slice(0, 40)}-${name}.png`) });
+        check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no sideways scrolling on ${h} (${name})`);
+      }
+    }
+    check(errs.length === 0, `no script errors in the ${name} screenshot pass${errs.length ? `: ${errs.join("; ")}` : ""}`);
+    await c.close();
+  }
 } catch (e) {
   failures.push(String(e));
   console.error(e);

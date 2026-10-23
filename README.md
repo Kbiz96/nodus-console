@@ -1,7 +1,20 @@
 # Nodus console
 
-The private web console for the Nodus Origination Engine: Today, Contacts, Deals, Outreach, Matches, Opportunities,
-Organisations, Signals, Mandates, Sources, Spend and Search. It is also the Nodus CRM (merged from the old Nodus HQ):
+The private web console for the Nodus Origination Engine: Today, Engine, Map, Contacts, Deals, Outreach, Matches, Opportunities,
+Organisations, Signals, Mandates, Sources, Spend and Search.
+
+- **Engine** (`#/engine`): mandates and needs on the left, opportunities on the right, one line per proposed match
+  (thicker and brighter = higher score). Pick a line for the score breakdown (including what your rejections took off)
+  and shortlist, reject with a reason, or send to CRM from there. `#/matches` is the same data as a list.
+- **Map** (`#/map`): every opportunity on a globe, coloured by line, sized by MW, glowing if found in the last 7 days,
+  with filters for line, side, region, gate and minimum MW, and a highlight of the countries live mandates look in.
+  Places come from the opportunity's country and region with no outside geocoding: US state where the region names
+  one, UK council or county for common UK places, otherwise the country (`src/lib/geo.ts`). The outlines are bundled
+  (Natural Earth via `world-atlas`, US states via `us-atlas`); street detail fades in from CARTO's dark basemap when you
+  zoom in.
+- The design follows nodus.partners: tokens in `src/styles.css`, shared pieces in `src/components/ui.tsx` and
+  `src/components/Brand.tsx` (the NODUS mark). Fonts (Space Grotesk, JetBrains Mono) are bundled from npm. Press `/` or
+  Ctrl/Cmd-K anywhere to search. It is also the Nodus CRM (merged from the old Nodus HQ):
 Today opens with drafts to approve, LinkedIn messages to send yourself, actions and deals due, then a weekly scoreboard (this week against last, UK Monday to Sunday, from the `scoreboard` database function). Rejecting a match needs a reason from a short list (`match_reject`), which the engine learns from. Outreach decisions go
 through the `outreach_decide` database function; deal stages follow the gates (Protected needs NCNDA and fee signed;
 Verified also needs principal, KYC and proof). `#/import` is a one-off import of the old HQ export via `crm_import`. It is a static web page (HTML, CSS and JavaScript only) published
@@ -44,7 +57,8 @@ npm run dev       # local preview at http://localhost:5173
 npm test          # unit tests for dates, numbers, filters, mandate form and gate rules
 npm run build     # type-check and build into dist/
 npm run smoke     # optional: browser check of the built site against fake Supabase answers
-                  # (needs Playwright and Chromium installed locally)
+                  # (needs Playwright and Chromium installed locally). Add a folder to keep screenshots:
+                  # npm run smoke -- /tmp/shots. SMOKE_SHOTS_ONLY=1 runs just the desktop and phone screenshot pass.
 ```
 
 Addresses use `#/` (for example `…/nodus-console/#/opportunities`) because GitHub Pages cannot send
