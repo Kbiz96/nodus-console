@@ -22,7 +22,7 @@ import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { fmtDate, fmtMW, fmtNumber } from "../lib/format.ts";
 import { COUNTRIES, REGION_BOUNDS, REGION_GROUPS, mandateCountries, mwOf, placeAll, regionGroup, type Precision, type RegionGroup } from "../lib/geo.ts";
-import { GATES, GATE_LABEL, LINES, LINE_COLOUR, LINE_LABEL, SIDE_LABEL, lineColour } from "../lib/labels.ts";
+import { GATES, GATE_LABEL, LINES, LINE_COLOUR, LINE_LABEL, SIDE_LABEL, lineColour, linesParam, parseLines } from "../lib/labels.ts";
 import { ExtLink, GateBadge, LineBadge, Loading, ErrorBox, useTitle } from "../components/ui.tsx";
 import { Icon } from "../components/Brand.tsx";
 
@@ -179,10 +179,8 @@ export default function MapView() {
   useTitle("Map");
   const { data, error, loading, reload } = useLoad(load, "map");
   const [sp, setSp] = useSearchParams();
-  const lineSet = useMemo(() => {
-    const v = sp.get("lines");
-    return new Set(v ? v.split(",").filter((x) => (LINES as readonly string[]).includes(x)) : LINES);
-  }, [sp]);
+  // Critical power is off by default (not a focus line right now); "lines=all" shows everything.
+  const lineSet = useMemo(() => parseLines(sp.get("lines")), [sp]);
   const side = sp.get("side") === "supply" || sp.get("side") === "need" ? (sp.get("side") as string) : null;
   const group = (REGION_GROUPS as readonly string[]).includes(sp.get("region") ?? "") ? (sp.get("region") as RegionGroup) : null;
   const minMw = Number(sp.get("mw")) > 0 ? Number(sp.get("mw")) : null;
@@ -200,7 +198,7 @@ export default function MapView() {
     const n = new Set(lineSet);
     if (n.has(l)) n.delete(l);
     else n.add(l);
-    set("lines", n.size === LINES.length || n.size === 0 ? null : [...n].join(","));
+    set("lines", linesParam(n));
   };
 
   const now = Date.now();

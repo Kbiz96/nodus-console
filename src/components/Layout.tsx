@@ -3,20 +3,24 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { Icon, Logo, type IconName } from "./Brand.tsx";
+import { Toaster } from "./Toast.tsx";
+import { calmPref, remember, setCalmPref } from "../lib/calm.ts";
 
 interface Item { to: string; label: string; icon: IconName; end?: boolean }
-const GROUPS: { name: string; items: Item[] }[] = [
-  {
-    name: "Command",
-    items: [
-      { to: "/", label: "Today", icon: "today", end: true },
-      { to: "/engine", label: "Engine", icon: "engine" },
-      { to: "/map", label: "Map", icon: "map" },
-    ],
-  },
+
+/** The five places Kuran uses every day. Everything else sits under More. */
+const PRIMARY: Item[] = [
+  { to: "/", label: "Focus", icon: "focus", end: true },
+  { to: "/review", label: "Review", icon: "review" },
+  { to: "/priorities", label: "Priorities", icon: "priorities" },
+  { to: "/map", label: "Map", icon: "map" },
+  { to: "/engine", label: "Engine", icon: "engine" },
+];
+const MORE: { name: string; items: Item[] }[] = [
   {
     name: "Pipeline",
     items: [
+      { to: "/today", label: "Today cockpit", icon: "today" },
       { to: "/matches", label: "Matches", icon: "matches" },
       { to: "/opportunities", label: "Opportunities", icon: "opportunities" },
       { to: "/mandates", label: "Mandates", icon: "mandates" },
@@ -31,18 +35,40 @@ const GROUPS: { name: string; items: Item[] }[] = [
       { to: "/signals", label: "Signals", icon: "signals" },
       { to: "/sources", label: "Sources", icon: "sources" },
       { to: "/spend", label: "Spend", icon: "spend" },
+      { to: "/import", label: "Import", icon: "import" },
+      { to: "/search", label: "Search", icon: "search" },
     ],
   },
 ];
-const ALL = GROUPS.flatMap((g) => g.items);
-const TABS: Item[] = [ALL[0], ALL[1], ALL[2], ALL[3]];
+const ALL = [...PRIMARY, ...MORE.flatMap((g) => g.items)];
+const inMore = (path: string) => MORE.some((g) => g.items.some((i) => path === i.to || path.startsWith(`${i.to}/`)));
+
+const CALM_BY_DEFAULT = ["/", "/review", "/priorities"];
+
+/** Calm mode is on by default on Focus (and its Review and Priorities screens) until Kuran chooses; his choice is remembered in this browser. */
+function useCalm(path: string): [boolean, () => void] {
+  const [pref, setPref] = useState(() => calmPref());
+  const calm = pref ? pref === "on" : CALM_BY_DEFAULT.includes(path);
+  useEffect(() => {
+    document.documentElement.dataset.calm = calm ? "on" : "off";
+  }, [calm]);
+  const toggle = () => {
+    const v = calm ? "off" : "on";
+    setCalmPref(v);
+    setPref(v);
+  };
+  return [calm, toggle];
+}
 
 export default function Layout({ email, onSignOut, children }: { email: string | null; onSignOut: () => void; children: ReactNode }) {
   const location = useLocation();
   const status = useStatus(location.pathname);
+  const [calm, toggleCalm] = useCalm(location.pathname);
   const [palette, setPalette] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(() => remember("nodus-rail-more") === "open");
   const bleed = location.pathname === "/map";
+  const moreActive = inMore(location.pathname);
 
   // "/" or Cmd/Ctrl-K opens search from anywhere (except while typing).
   useEffect(() => {
@@ -58,11 +84,26 @@ export default function Layout({ email, onSignOut, children }: { email: string |
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   useEffect(() => setSheet(false), [location.pathname]);
+  const toggleMore = () => {
+    const v = !moreOpen;
+    setMoreOpen(v);
+    remember("nodus-rail-more", v ? "open" : "closed");
+  };
 
-  const count = (to: string) => (to === "/" && status.drafts > 0 ? <span className="nav-count" title={`${status.drafts} drafts waiting for approval`}>{status.drafts}</span> : null);
+  const count = (to: string) => (to === "/review" && status.drafts > 0 ? <span className="nav-count" title={`${status.drafts} drafts waiting for approval`}>{status.drafts}</span> : null);
+  const link = (i: Item) => {
+    const Ic = Icon[i.icon];
+    return (
+      <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
+        <Ic />
+        {i.label}
+        {count(i.to)}
+      </NavLink>
+    );
+  };
 
   return (
-    <div className="shell">
+    <div className={calm ? "shell calm" : "shell"}>
       <aside className="rail" aria-label="Console">
         <div className="rail-brand"><Logo sub="CONSOLE" /></div>
         <button type="button" className="rail-search" onClick={() => setPalette(true)} aria-label="Search everything">
@@ -71,21 +112,22 @@ export default function Layout({ email, onSignOut, children }: { email: string |
           <kbd>/</kbd>
         </button>
         <nav className="rail-nav" aria-label="Main">
-          {GROUPS.map((g) => (
-            <div key={g.name} className="rail-group">
-              <span>{g.name}</span>
-              {g.items.map((i) => {
-                const Ic = Icon[i.icon];
-                return (
-                  <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
-                    <Ic />
-                    {i.label}
-                    {count(i.to)}
-                  </NavLink>
-                );
-              })}
+          <div className="rail-group rail-primary">{PRIMARY.map(link)}</div>
+          <div className="rail-group">
+            <button type="button" className={`rail-more${moreActive ? " here" : ""}`} aria-expanded={moreOpen || moreActive} aria-controls="rail-more" onClick={toggleMore}>
+              <Icon.more />
+              More
+              <span className="chev" aria-hidden>{moreOpen || moreActive ? "−" : "+"}</span>
+            </button>
+            <div id="rail-more" hidden={!(moreOpen || moreActive)}>
+              {MORE.map((g) => (
+                <div key={g.name} className="rail-sub">
+                  <span>{g.name}</span>
+                  {g.items.map(link)}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </nav>
         <div className="rail-foot">
           {email && <span className="who" title={email}>{email}</span>}
@@ -101,35 +143,25 @@ export default function Layout({ email, onSignOut, children }: { email: string |
       </header>
 
       <div className="main-col">
-        <StatusStrip s={status} />
+        <StatusStrip s={status} calm={calm} onCalm={toggleCalm} />
         <main className={bleed ? "container bleed" : "container"} key={location.pathname}>{children}</main>
         {!bleed && (
           <footer className="footer">
             <span>Nodus Partners. Private. Nothing is sent without your approval.</span>
-            <Link to="/import">Import</Link>
             <span>UK time</span>
           </footer>
         )}
       </div>
 
       <nav className="mnav" aria-label="Main (phone)">
-        {TABS.map((i) => {
-          const Ic = Icon[i.icon];
-          return (
-            <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
-              <Ic />
-              {i.label}
-              {count(i.to)}
-            </NavLink>
-          );
-        })}
-        <button type="button" onClick={() => setSheet((v) => !v)} aria-expanded={sheet} aria-controls="more-sheet">
+        {PRIMARY.map(link)}
+        <button type="button" className={moreActive ? "here" : undefined} onClick={() => setSheet((v) => !v)} aria-expanded={sheet} aria-controls="more-sheet">
           <Icon.more />
           More
         </button>
       </nav>
       <div className="msheet" id="more-sheet" hidden={!sheet}>
-        {GROUPS.slice(1).map((g) => (
+        {MORE.map((g) => (
           <div key={g.name} className="rail-group">
             <span>{g.name}</span>
             <div className="rail-nav-links">
@@ -147,11 +179,11 @@ export default function Layout({ email, onSignOut, children }: { email: string |
         ))}
         <div className="rail-foot">
           {email && <span className="who">{email}</span>}
-          <Link to="/import">Import</Link>
           <button type="button" className="link-btn" onClick={onSignOut}>Sign out</button>
         </div>
       </div>
 
+      <Toaster />
       {palette && <Palette onClose={() => setPalette(false)} />}
     </div>
   );
@@ -255,7 +287,7 @@ function useStatus(path: string): Status {
   return s;
 }
 
-function StatusStrip({ s }: { s: Status }) {
+function StatusStrip({ s, calm, onCalm }: { s: Status; calm: boolean; onCalm: () => void }) {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const iv = window.setInterval(() => setNow(new Date()), 15_000);
@@ -271,12 +303,14 @@ function StatusStrip({ s }: { s: Status }) {
         <span className="k">Engine</span>
         <b>{s.lastRun ? ukDayTime.format(new Date(s.lastRun)) : s.loaded ? "no runs" : "…"}</b>
       </Link>
+      {!calm && (
+      <>
       <Link to="/sources" className="strip-cell">
         <span className="k">Sources live</span>
         <b>{s.sourcesLive === null ? "…" : fmtNumber(s.sourcesLive)}</b>
         {s.sourcesAll !== null && <span>/ {fmtNumber(s.sourcesAll)}</span>}
       </Link>
-      <Link to="/" className={`strip-cell${s.drafts > 0 ? " hot" : ""}`}>
+      <Link to="/review" className={`strip-cell${s.drafts > 0 ? " hot" : ""}`}>
         <span className="k">To approve</span>
         <b>{fmtNumber(s.drafts)}</b>
       </Link>
@@ -284,10 +318,17 @@ function StatusStrip({ s }: { s: Status }) {
         <span className="k">New matches</span>
         <b>{s.proposed === null ? "…" : fmtNumber(s.proposed)}</b>
       </Link>
-      <Link to="/" className="strip-cell">
+      <Link to="/today" className="strip-cell">
         <span className="k">AI queue</span>
         <b>{s.aiQueue === null ? "…" : fmtNumber(s.aiQueue)}</b>
       </Link>
+      </>
+      )}
+      <button type="button" className="strip-cell strip-calm" aria-pressed={calm} onClick={onCalm} title={calm ? "Calm mode is on: counters and effects are hidden. Press to show them." : "Hide the counters and effects"}>
+        <Icon.calm />
+        <span className="k">Calm</span>
+        <b>{calm ? "On" : "Off"}</b>
+      </button>
       <span className="strip-cell strip-clock" title="UK time">
         <span className="k">UK</span>
         <b>{ukTime.format(now)}</b>

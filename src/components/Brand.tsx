@@ -43,5 +43,14 @@ export const Icon = {
   more: () => <I><path d="M3 5h14M3 10h14M3 15h14" /></I>,
   import: () => <I><path d="M10 2.5v10M6 8.5l4 4 4-4M3 14.5v3h14v-3" /></I>,
   close: () => <I><path d="m5 5 10 10M15 5 5 15" /></I>,
+  focus: () => <I><circle cx="10" cy="10" r="7" /><circle cx="10" cy="10" r="3" /><circle cx="10" cy="10" r=".6" fill="currentColor" /></I>,
+  review: () => <I><rect x="4" y="5" width="12" height="12" /><path d="M6.5 2.5h9.5V14" /><path d="m7 11 2 2 4-4" /></I>,
+  priorities: () => <I><path d="M7 5h10M7 10h10M7 15h10" /><path d="M3 4.2h1.2v1.6M3 9.2h1.2v1.6M3 14.2h1.2v1.6" /></I>,
+  pencil: () => <I><path d="M13.5 3.5l3 3L7 16H4v-3z" /><path d="M11.5 5.5l3 3" /></I>,
+  up: () => <I><path d="M10 16V4M5 9l5-5 5 5" /></I>,
+  down: () => <I><path d="M10 4v12M5 11l5 5 5-5" /></I>,
+  calm: () => <I><path d="M3 8c2-2 4-2 7 0s5 2 7 0M3 13c2-2 4-2 7 0s5 2 7 0" /></I>,
+  claude: () => <I><path d="M10 2.5v4M10 13.5v4M2.5 10h4M13.5 10h4M4.7 4.7l2.8 2.8M12.5 12.5l2.8 2.8M15.3 4.7l-2.8 2.8M7.5 12.5l-2.8 2.8" /></I>,
+  external: () => <I><path d="M11 3h6v6M17 3l-8 8M14 12v5H3V6h5" /></I>,
 };
 export type IconName = keyof typeof Icon;

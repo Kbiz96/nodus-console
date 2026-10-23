@@ -36,7 +36,10 @@ export default function Engine() {
   useTitle("Engine");
   const [sp, setSp] = useSearchParams();
   const view = VIEWS.find((v) => v.key === sp.get("view")) ?? VIEWS[0];
-  const line = LINES.find((l) => l === sp.get("line")) ?? null;
+  // Default: every line except critical power (not a focus line right now). "line=all" includes it.
+  const lineParam = sp.get("line");
+  const line = LINES.find((l) => l === lineParam) ?? null;
+  const allLines = lineParam === "all";
   const mandate = sp.get("mandate");
   const top = TOPS.find((t) => String(t) === sp.get("top")) ?? 60;
   const selId = sp.get("m");
@@ -63,9 +66,10 @@ export default function Engine() {
   const shown = useMemo(() => {
     let rows = data ?? [];
     if (line) rows = rows.filter((r) => r.line === line);
+    else if (!allLines) rows = rows.filter((r) => r.line !== "critical_power");
     if (mandate) rows = rows.filter((r) => r.mandate_id === mandate);
     return rows.slice(0, top);
-  }, [data, line, mandate, top]);
+  }, [data, line, allLines, mandate, top]);
   const graph = useMemo(() => buildGraph(shown), [shown]);
   const selected = shown.find((r) => r.id === selId) ?? (data ?? []).find((r) => r.id === selId) ?? null;
 
@@ -105,7 +109,8 @@ export default function Engine() {
         <div className="field">
           <span>Line</span>
           <div className="seg" role="group" aria-label="Line">
-            <button type="button" aria-pressed={!line} onClick={() => set("line", null)}>All</button>
+            <button type="button" aria-pressed={!line && !allLines} onClick={() => set("line", null)} title="Every line except critical power">Focus lines</button>
+            <button type="button" aria-pressed={allLines} onClick={() => set("line", "all")} title="Every line, including critical power">All</button>
             {LINES.map((l) => (
               <button key={l} type="button" aria-pressed={line === l} onClick={() => set("line", l)} title={LINE_LABEL[l]}>
                 {l === "critical_power" ? "Power" : l === "powered_land" ? "Land" : l === "capital" ? "Capital" : "Compute"}

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { GATE_LABEL, LINE_LABEL, MATCH_STATUS_LABEL, SANCTIONS_LABEL, SCORE_PARTS } from "../lib/labels.ts";
 import { fmtNumber, hostOf, safeHref } from "../lib/format.ts";
 import { friendlyError, isNotAllowed } from "../lib/rules.ts";
+import { isCalm } from "../lib/calm.ts";
 
 export const NOT_APPROVED = "This account isn't approved for the Nodus console.";
 
@@ -40,7 +41,7 @@ export function NotFound({ what = "record" }: { what?: string }) {
     <div className="card stack">
       <h1>Not found</h1>
       <p className="muted">That {what} does not exist (it may have been merged or removed).</p>
-      <Link to="/">Back to Today</Link>
+      <Link to="/">Back to Focus</Link>
     </div>
   );
 }
@@ -159,6 +160,7 @@ export function PageHead({ eyebrow, title, children, actions }: { eyebrow?: stri
 
 function reducedMotion(): boolean {
   try {
+    if (isCalm()) return true;
     return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   } catch {
     return true;

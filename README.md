@@ -1,7 +1,21 @@
 # Nodus console
 
-The private web console for the Nodus Origination Engine: Today, Engine, Map, Contacts, Deals, Outreach, Matches, Opportunities,
-Organisations, Signals, Mandates, Sources, Spend and Search.
+The private web console for the Nodus Origination Engine: Focus, Review, Priorities, Map and Engine, with Today, Contacts,
+Deals, Outreach, Matches, Opportunities, Organisations, Signals, Mandates, Sources, Spend, Import and Search under More.
+
+- **Focus** (`#/`, the home screen): the live priorities (table `priorities`, progress from the `priority_progress` view)
+  as large cards, top three first, each with one obvious next action. **Ask Claude** opens `claude.ai/new?q=…` with a
+  ready instruction (and copies it); the small menu has preset asks. **Do now** is the review deck, one draft at a time,
+  priority-tagged drafts first. **Waiting on others** (collapsed) lists replies with a "Draft reply with Claude" button.
+  Calm mode (toggle in the top strip, remembered in this browser, on by default for Focus, Review and Priorities) hides
+  the strip counters and the count-up and glow effects.
+- **Review** (`#/review`, `#/review?priority=<id>`): the deck on its own. Email: Approve & send (through
+  `outreach_decide`; the send batch sends at 09:53, 12:53 or 15:53 UK on weekdays), Skip, Edit, Later. LinkedIn: Copy &
+  open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: A, S, E, C, L. There is no Undo,
+  because the database has no way to take back an approval or a skip.
+- **Priorities** (`#/priorities`): edit, reorder, pause, mark done, add. Writes go straight to `priorities` (RLS).
+- **Today** moved to `#/today`. Map and Engine leave critical power out by default; the line toggle brings it back
+  (`?lines=all` on Map, `?line=all` on Engine).
 
 - **Engine** (`#/engine`): mandates and needs on the left, opportunities on the right, one line per proposed match
   (thicker and brighter = higher score). Pick a line for the score breakdown (including what your rejections took off)
