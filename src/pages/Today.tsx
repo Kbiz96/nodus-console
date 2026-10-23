@@ -7,6 +7,7 @@ import { LINES, LINE_LABEL } from "../lib/labels.ts";
 import type { MatchCardRow } from "../lib/types.ts";
 import MatchCard from "../components/MatchCard.tsx";
 import TodayCrm from "../components/TodayCrm.tsx";
+import Scoreboard from "../components/Scoreboard.tsx";
 import { Confidence, Empty, ErrorBox, ExtLink, LineBadge, Loading, useTitle } from "../components/ui.tsx";
 
 interface Blocked {
@@ -84,9 +85,10 @@ export default function Today() {
     <div className="stack-lg">
       <div className="section-head">
         <h1>Today</h1>
-        <p className="muted">Your approvals, actions and deals due first; then what the engine found.</p>
+        <p className="muted">Your approvals, actions and deals due first; then this week&rsquo;s scoreboard and what the engine found.</p>
       </div>
       <TodayCrm />
+      <Scoreboard />
       <EngineToday />
     </div>
   );

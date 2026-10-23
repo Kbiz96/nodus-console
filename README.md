@@ -2,7 +2,7 @@
 
 The private web console for the Nodus Origination Engine: Today, Contacts, Deals, Outreach, Matches, Opportunities,
 Organisations, Signals, Mandates, Sources, Spend and Search. It is also the Nodus CRM (merged from the old Nodus HQ):
-Today opens with drafts to approve, LinkedIn messages to send yourself, actions and deals due. Outreach decisions go
+Today opens with drafts to approve, LinkedIn messages to send yourself, actions and deals due, then a weekly scoreboard (this week against last, UK Monday to Sunday, from the `scoreboard` database function). Rejecting a match needs a reason from a short list (`match_reject`), which the engine learns from. Outreach decisions go
 through the `outreach_decide` database function; deal stages follow the gates (Protected needs NCNDA and fee signed;
 Verified also needs principal, KYC and proof). `#/import` is a one-off import of the old HQ export via `crm_import`. It is a static web page (HTML, CSS and JavaScript only) published
 on GitHub Pages. There is no server of our own: the page runs in your browser and talks straight to the

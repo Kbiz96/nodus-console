@@ -68,6 +68,8 @@ function fake(approved) {
       if (name === "nodus_is_kuran") return json(200, approved);
       if (name === "search_all") return json(200, fx.search_all);
       if (name === "match_decide") return json(204);
+      if (name === "match_reject") return body.p_reason ? json(204) : json(400, { code: "P0001", message: "Please pick a reason for rejecting" });
+      if (name === "scoreboard") return json(200, { mandates_new: 2, matches_accepted: 3, drafts_approved: 5, emails_sent: 4, replies: 1, meetings: 1, ncndas_signed: 0, fees_signed: 0, tracking_since: "2026-10-23T12:00:00Z" });
       if (name === "match_export") return json(200, { source: "Nodus Origination Engine", anonymised: true });
       if (name === "gate_advance") return body.p_confirmed ? json(200, "protected") : json(400, { code: "P0001", message: "Please tick the confirmation box" });
       if (name === "mandate_save") return json(200, "dddddddd-0000-4000-8000-000000000001");
@@ -144,6 +146,20 @@ try {
   await page.getByRole("button", { name: "Shortlist" }).first().click();
   await page.getByText("Shortlisted.").waitFor();
   check(rpcCalls.some((c) => c.name === "match_decide" && c.body.p_action === "shortlist"), "Shortlist calls match_decide");
+
+  await page.getByRole("heading", { name: "Scoreboard" }).waitFor();
+  check(await page.getByText("Fee letters signed").isVisible(), "Today shows the weekly scoreboard");
+  await page.locator("section", { has: page.getByRole("heading", { name: "Scoreboard" }) }).screenshot({ path: path.join(shots, "console-scoreboard.png") });
+  check(rpcCalls.filter((c) => c.name === "scoreboard").length >= 2, "scoreboard asked for this week and last week");
+
+  await page.getByRole("button", { name: "Reject…" }).first().click();
+  const confirmReject = page.getByRole("button", { name: "Confirm reject" }).first();
+  check(await confirmReject.isDisabled(), "Reject needs a reason first");
+  await page.getByLabel("Reason").first().selectOption("wrong_geography");
+  await page.locator(".reject-form").first().screenshot({ path: path.join(shots, "console-reject.png") });
+  await confirmReject.click();
+  await page.getByText("Rejected. The engine will learn from this.").waitFor();
+  check(rpcCalls.some((c) => c.name === "match_reject" && c.body.p_reason === "wrong_geography" && c.body.p_note === null), "Reject calls match_reject with the reason");
 
   const dl = page.waitForEvent("download");
   await page.getByRole("button", { name: "Send to CRM" }).first().click();

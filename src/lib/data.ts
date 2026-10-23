@@ -5,6 +5,7 @@ import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
 import type { SearchAll } from "./types.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
+import type { ScoreCounts } from "./scoreboard.ts";
 
 export const MATCH_CARD_COLS =
   "id,status,total_score,scores,thesis,explanation,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
@@ -44,6 +45,11 @@ export async function matchDecide(id: string, action: "shortlist" | "reject" | "
 /** Reject with a reason from the list (and an optional note); the engine learns from it. */
 export async function matchReject(id: string, reason: string, note: string): Promise<void> {
   must(await supabase.rpc("match_reject", { p_match: id, p_reason: reason, p_note: note.trim() || null }));
+}
+
+/** Read-only counts for the weekly scoreboard, for one period [from, to). */
+export async function scoreboard(from: string, to: string): Promise<ScoreCounts> {
+  return (must(await supabase.rpc("scoreboard", { p_from: from, p_to: to })) as ScoreCounts | null) ?? {};
 }
 
 export async function matchExport(id: string): Promise<unknown> {
