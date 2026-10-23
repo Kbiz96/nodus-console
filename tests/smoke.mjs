@@ -6,11 +6,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { synthetic } from "./fixtures/synthetic.mjs";
+import { focusData, synthetic } from "./fixtures/synthetic.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
 const shots = process.argv[2] || process.env.SHOTS_DIR || path.resolve(here, "../.smoke");
+// Focus, Review and Priorities screenshots can go to their own folder.
+const focusShots = process.env.FOCUS_SHOTS || shots;
 const fx = JSON.parse(fs.readFileSync(path.join(here, "fixtures/fixtures.json"), "utf8"));
 process.env.PLAYWRIGHT_BROWSERS_PATH ||= "/opt/pw-browsers";
 
@@ -99,7 +101,14 @@ function fake(approved, data = fx) {
     const statusEq = u.searchParams.get("status");
     if (statusEq?.startsWith("eq.")) rows = rows.filter((r) => r.status === statusEq.slice(3));
     if (statusEq?.startsWith("in.(")) { const set = statusEq.slice(4, -1).split(","); rows = rows.filter((r) => !r.status || set.includes(r.status)); }
-    if (req.method() === "PATCH") { writes.push({ table, url: u.search, body: req.postDataJSON?.() ?? {} }); return json(200, rows.slice(0, 1)); }
+    const prioEq = u.searchParams.get("priority_id");
+    if (prioEq?.startsWith("eq.")) rows = rows.filter((r) => r.priority_id === prioEq.slice(3));
+    if (req.method() === "PATCH") { writes.push({ table, method: "PATCH", url: u.search, body: req.postDataJSON?.() ?? {} }); return json(200, rows.slice(0, 1)); }
+    if (req.method() === "POST") {
+      const body = req.postDataJSON?.() ?? {};
+      writes.push({ table, method: "POST", url: u.search, body });
+      return json(201, [{ id: "abababab-0000-4000-8000-0000000000ff", ...body }]);
+    }
     const prefer = req.headers()["prefer"] ?? "";
     const n = data.counts[table] ?? rows.length;
     const lim = Number(u.searchParams.get("limit"));
@@ -116,6 +125,145 @@ function fake(approved, data = fx) {
 const failures = [];
 const check = (ok, what) => { console.log(`${ok ? "ok  " : "FAIL"} ${what}`); if (!ok) failures.push(what); };
 fs.mkdirSync(shots, { recursive: true });
+
+const P1 = "abababab-0000-4000-8000-000000000001";
+
+/** Focus, Review and Priorities on the small fixture: every button that writes, at one width. */
+async function focusFlow(browser, label, viewport) {
+  const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: "en-GB", timezoneId: "Europe/London" });
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await ctx.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true));
+  await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
+  await ctx.addInitScript((s) => localStorage.setItem("nodus-console-auth", JSON.stringify(s)), session);
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on("pageerror", (e) => errors.push(String(e)));
+  const at = (what) => `${what} (${label})`;
+  const rpcBefore = rpcCalls.length;
+  const writesBefore = writes.length;
+  const newRpc = () => rpcCalls.slice(rpcBefore);
+  const newWrites = () => writes.slice(writesBefore);
+
+  // Focus
+  await page.goto(base);
+  await page.getByRole("heading", { name: "Your priorities" }).waitFor();
+  check(/^Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".focus-head h1").textContent()) ?? ""), at("Focus greets Kuran"));
+  check(await page.getByText("Here’s what moves money today.").isVisible(), at("Focus says what it is for"));
+  await page.locator(".pcard").first().waitFor();
+  check(await page.locator(".pcard").count() === 3, at("Focus shows the top three priorities"));
+  check(await page.locator(".pcard-rank").first().textContent() === "1", at("priorities are in rank order"));
+  await page.getByRole("button", { name: "Show 2 more" }).click();
+  check(await page.locator(".pcard").count() === 5, at("Show 2 more reveals the rest"));
+  check(await page.evaluate(() => document.documentElement.dataset.calm) === "on", at("calm mode is on by default on Focus"));
+  check(await page.locator(".strip-cell", { hasText: "Sources live" }).count() === 0, at("calm mode hides the strip counters"));
+
+  const ask = page.locator(".pcard").first().getByRole("link", { name: "Ask Claude" });
+  const href = (await ask.getAttribute("href")) ?? "";
+  const q = new URL(href).searchParams.get("q") ?? "";
+  check(href.startsWith("https://claude.ai/new?q=") && q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker): Reach 25 neoclouds") && q.endsWith("tag drafts with priority 1."), at("Ask Claude opens claude.ai with the ready instruction"));
+  const popup = page.waitForEvent("popup");
+  await ask.click();
+  await (await popup).close().catch(() => undefined);
+  await page.getByText("Copied — paste into your Nodus chat if it didn't fill").waitFor();
+  check(await page.evaluate(() => navigator.clipboard.readText()) === q, at("Ask Claude copies the same instruction"));
+  await page.locator(".pcard").first().locator(".ask-menu summary").click();
+  check(await page.locator(".pcard").first().getByRole("link", { name: "What's blocking this?" }).isVisible(), at("preset asks are offered"));
+  await page.locator(".pcard").first().locator(".ask-menu summary").click();
+  check(await page.locator(".pcard").first().getByRole("link", { name: "Review 1 draft" }).getAttribute("href") === `#/review?priority=${P1}`, at("Review drafts jumps to that priority's drafts"));
+
+  // Do now: one at a time, priority 1 first
+  check(/1\s*of\s*2/.test(await page.locator(".deck-count").textContent() ?? ""), at("Do now shows 1 of 2"));
+  check(await page.locator(".deck-card .ptag").textContent() === "Priority 1: Al-Risha phase 1: find the offtaker", at("priority-tagged draft comes first"));
+  if (label === "desktop") await page.keyboard.press("a");
+  else await page.getByRole("button", { name: "Approve & send" }).click();
+  await page.locator(".deck-last").waitFor();
+  check(/Sends at \d\d:53 (today|tomorrow|on [A-Z][a-z]+day)\./.test(await page.locator(".deck-last").textContent() ?? ""), at("approving says when it sends"));
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at(`${label === "desktop" ? "A key" : "Approve & send"} goes through outreach_decide`));
+  check(/2\s*of\s*2/.test(await page.locator(".deck-count").textContent() ?? ""), at("the deck moves on to 2 of 2"));
+  await page.evaluate(() => {
+    const open = window.open.bind(window);
+    window.__opened = [];
+    window.open = (u, ...rest) => (window.__opened.push(String(u)), open(u, ...rest));
+  });
+  const li = page.waitForEvent("popup");
+  await page.getByRole("button", { name: /Copy & open LinkedIn/ }).click();
+  await (await li).close().catch(() => undefined);
+  check((await page.evaluate(() => window.__opened))[0] === "https://www.linkedin.com/in/alex-example", at("Copy & open LinkedIn opens the profile"));
+  check(await page.evaluate(() => navigator.clipboard.readText()) === "Hi Alex, good to connect.", at("Copy & open LinkedIn copies the message"));
+  await page.getByRole("button", { name: "Mark sent" }).click();
+  await page.getByText("All done. Nothing else is waiting for you.").waitFor();
+  check(newWrites().some((w) => w.table === "outreach" && w.body.status === "sent"), at("Mark sent uses the existing sent path"));
+  check(!newRpc().some((c) => c.name === "outreach_decide" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000002"), at("an approved LinkedIn item is not approved twice"));
+
+  await page.locator(".waiting summary").click();
+  const reply = page.getByRole("link", { name: "Draft reply with Claude" });
+  const rq = new URL((await reply.getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
+  check(rq.includes("draft a reply to Alex Example at Example Power Ltd") && rq.includes('"Capacity in Jordan"') && rq.includes("priority 1"), at("Waiting on others drafts a reply with Claude"));
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Focus has no sideways scrolling"));
+
+  // Review: skip and edit
+  await page.goto(`${base}#/review`);
+  await page.getByRole("heading", { name: "Review", exact: true }).waitFor();
+  await page.locator(".deck-card").waitFor();
+  if (label === "desktop") {
+    await page.keyboard.press("e");
+    await page.locator(".deck-edit textarea").waitFor();
+  } else {
+    await page.getByRole("button", { name: "Edit" }).click();
+  }
+  await page.locator(".deck-edit textarea").fill("Hello Alex,\nShorter note.");
+  await page.getByRole("button", { name: "Save edit" }).click();
+  await page.getByText("Edit saved.").waitFor();
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "edit" && c.body.p_body === "Hello Alex,\nShorter note."), at("Review edit saves through outreach_decide"));
+  if (label === "desktop") await page.keyboard.press("s");
+  else await page.getByRole("button", { name: "Skip" }).click();
+  await page.locator(".deck-last").waitFor();
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "skip"), at(`${label === "desktop" ? "S key" : "Skip"} uses the skip path`));
+  check(await page.locator(".deck-card").getByRole("button", { name: "Skip" }).count() === 0, at("an approved LinkedIn item has no Skip"));
+  if (label === "phone") await page.screenshot({ path: path.join(shots, "review-small-phone.png") });
+  await page.goto(`${base}#/review?priority=${P1}`);
+  await page.locator(".deck-card").waitFor();
+  check(/1\s*of\s*1/.test(await page.locator(".deck-count").textContent() ?? "") && await page.locator('.pfilter a[aria-current="page"]').textContent().then((t) => t?.includes("Al-Risha")), at("Review can be filtered to one priority"));
+
+  // Priorities: edit, move, pause, add
+  await page.goto(`${base}#/priorities`);
+  await page.getByRole("heading", { name: "Priorities", exact: true }).waitFor();
+  check(await page.locator(".pcard").count() === 5, at("Priorities lists every live priority"));
+  await page.getByRole("button", { name: "Edit Al-Risha phase 1: find the offtaker" }).click();
+  await page.getByLabel("Next action").fill("Send the teaser to 25 neoclouds");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Priority saved.").waitFor();
+  check(newWrites().some((w) => w.table === "priorities" && w.method === "PATCH" && w.body.next_action === "Send the teaser to 25 neoclouds" && /id=eq\.abababab-0000-4000-8000-000000000001/.test(w.url)), at("editing a priority writes to priorities"));
+  await page.getByRole("button", { name: "Edit Mindstream ~$100m convertible note" }).click();
+  await page.getByRole("button", { name: "Move up" }).click();
+  await page.getByText("Moved up.").waitFor();
+  const ranks = newWrites().filter((w) => w.table === "priorities" && "rank" in w.body).map((w) => w.body.rank);
+  check(ranks.includes(1) && ranks.includes(2), at("Move up swaps the ranks"));
+  await page.getByRole("button", { name: "Edit Optio: find borrowers" }).click();
+  await page.getByRole("button", { name: "Pause" }).click();
+  await page.getByText("Paused.", { exact: false }).first().waitFor();
+  check(newWrites().some((w) => w.table === "priorities" && w.body.status === "paused"), at("Pause sets the status"));
+  await page.getByRole("button", { name: "+ Add a priority" }).click();
+  await page.getByPlaceholder("What are we trying to close?").fill("GPU lot for Quarry");
+  await page.getByRole("button", { name: "Add priority" }).click();
+  await page.getByText("Priority added.").waitFor();
+  check(newWrites().some((w) => w.table === "priorities" && w.method === "POST" && w.body.title === "GPU lot for Quarry" && w.body.rank === 6 && w.body.status === "active"), at("Add a priority inserts at the bottom"));
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Priorities has no sideways scrolling"));
+
+  // Shell: five primary places, the rest under More
+  const nav = label === "phone" ? page.locator(".mnav") : page.locator(".rail-primary");
+  const names = (await nav.getByRole("link").allTextContents()).map((t) => t.replace(/\d+$/, "").trim());
+  check(JSON.stringify(names) === JSON.stringify(["Focus", "Review", "Priorities", "Map", "Engine"]), at(`primary nav is Focus, Review, Priorities, Map, Engine (got ${names.join(", ")})`));
+  if (label === "phone") await page.getByRole("button", { name: "More" }).click();
+  else await page.locator(".rail-more").click();
+  await page.getByRole("link", { name: "Today cockpit" }).first().click();
+  await page.getByRole("heading", { name: "Today", exact: true }).waitFor();
+  check(true, at("the Today cockpit is under More"));
+  await page.locator(".strip-calm").click();
+  check(await page.evaluate(() => document.documentElement.dataset.calm) === "on" && await page.evaluate(() => localStorage.getItem("nodus-calm")) === "on", at("calm toggle is remembered in this browser"));
+  check(errors.length === 0, at(`no script errors on Focus, Review and Priorities${errors.length ? `: ${errors.join("; ")}` : ""}`));
+  await ctx.close();
+}
 
 const browser = await chromium.launch({ args: ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"] });
 try {
@@ -140,6 +288,9 @@ try {
   await page.getByLabel("Password").fill("right-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 
+  await page.getByRole("heading", { name: "Your priorities" }).waitFor();
+  check(true, "signing in opens Focus");
+  await page.goto(`${base}#/today`);
   await page.getByRole("heading", { name: "Today" }).waitFor();
   await page.getByText("Ealing 50 MW site could serve the London hyperscaler need").waitFor();
   check(await page.getByText("£0.00").isVisible(), "Today shows Claude API spend £0.00");
@@ -232,7 +383,7 @@ try {
   check(true, "search result links to the organisation page");
 
   // ---------- CRM (merged from the old HQ) ----------
-  await page.goto(base);
+  await page.goto(`${base}#/today`);
   await page.getByRole("heading", { name: "Approve (1)" }).waitFor();
   check(await page.locator(".nav-count").first().textContent() === "1", "Today shows a drafts badge in the nav");
   check(await page.getByRole("heading", { name: "LinkedIn to send (1)" }).isVisible(), "Today lists LinkedIn to send");
@@ -297,12 +448,21 @@ try {
   await page.getByText("By region").waitFor();
   check(await page.locator(".maplibregl-canvas").count() === 1 || await page.locator(".map-note").count() > 0, "Map draws a map canvas (or explains why not)");
   check(rpcCalls.length > 0 && await page.getByRole("button", { name: "Critical power" }).isVisible(), "Map shows line filters");
+  check(await page.getByRole("button", { name: "Critical power" }).getAttribute("aria-pressed") === "false", "Map leaves critical power off by default");
+  await page.getByRole("button", { name: "Critical power" }).click();
+  check(/lines=all/.test(page.url()), "Map critical power toggle brings it back");
   await page.getByRole("button", { name: "UK" }).click();
   check(/region=UK/.test(page.url()), "Map region filter is kept in the address");
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), "Map has no sideways scrolling at phone width");
 
   await page.goto(`${base}#/engine`);
   await page.getByRole("heading", { name: "Engine", exact: true }).waitFor();
+  await page.locator(".engine-svg .link").first().waitFor({ state: "attached" });
+  check(await page.locator(".engine-svg .link").count() === 1, "Engine hides critical power by default");
+  await page.getByRole("button", { name: "All", exact: true }).click();
+  await page.waitForTimeout(200);
+  check(await page.locator(".engine-svg .link").count() === 2 && /line=all/.test(page.url()), "Engine 'All' brings critical power back");
+  await page.goto(`${base}#/engine?line=all`);
   await page.locator(".engine-svg .link").first().waitFor({ state: "attached" });
   check(await page.locator(".engine-svg .link").count() >= 1, "Engine draws match lines");
   await page.getByRole("list", { name: "Strongest matches" }).getByRole("button").first().click();
@@ -336,10 +496,16 @@ try {
   await p2.getByText("This account isn't approved for the Nodus console.").waitFor();
   check(true, "unapproved account sees the not-approved message");
   await ctx2.close();
+
+  // ---------- Focus, Review and Priorities at phone and desktop width ----------
+  for (const [label, viewport] of [["phone", { width: 390, height: 844 }], ["desktop", { width: 1440, height: 900 }]]) {
+    await focusFlow(browser, label, viewport);
+  }
   }
 
   // ---------- screenshots with fuller fake data: desktop 1440 and phone 390 ----------
   const syn = synthetic();
+  const fd = focusData();
   const big = {
     ...fx,
     tables: {
@@ -349,6 +515,10 @@ try {
       matches: syn.matches.map((m) => ({ id: m.id, status: m.status, total_score: m.total_score, supply_opportunity_id: m.supply_id, need_opportunity_id: m.need_id })),
       mandates: [...fx.tables.mandates, ...syn.mandates],
       deals: [...fx.tables.deals, ...syn.deals],
+      priorities: fd.priorities,
+      priority_progress: fd.progress,
+      outreach: fd.outreach,
+      crm_contacts: [...fx.tables.crm_contacts, ...fd.contacts],
       connector_runs: [{ finished_at: new Date(Date.now() - 5 * 3600e3).toISOString() }],
     },
     counts: { ...fx.counts, sources: 41 },
@@ -364,6 +534,22 @@ try {
     p.on("pageerror", (e) => errs.push(String(e)));
     if (process.env.SMOKE_DEBUG) p.on("console", (m) => m.type() !== "log" && console.log(`  [${name} console ${m.type()}] ${m.text().slice(0, 400)}`));
     await p.goto(base);
+    await p.getByRole("heading", { name: "Your priorities" }).waitFor();
+    await p.locator(".deck-card").waitFor();
+    await p.waitForTimeout(500);
+    await p.screenshot({ path: path.join(focusShots, `focus-${name}.png`) });
+    await p.screenshot({ path: path.join(focusShots, `focus-${name}-full.png`), fullPage: true });
+    check(/1\s*of\s*17/.test(await p.locator(".deck-count").textContent() ?? ""), `Do now counts 17 drafts (${name})`);
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Focus has no sideways scrolling with full data (${name})`);
+    await p.goto(`${base}#/review`);
+    await p.locator(".deck-card").waitFor();
+    await p.waitForTimeout(400);
+    await p.screenshot({ path: path.join(focusShots, `review-${name}.png`), fullPage: name === "phone" });
+    await p.goto(`${base}#/priorities`);
+    await p.locator(".pcard").first().waitFor();
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: path.join(focusShots, `priorities-${name}.png`), fullPage: true });
+    await p.goto(`${base}#/today`);
     await p.getByRole("heading", { name: "Today", exact: true }).waitFor();
     await p.getByRole("heading", { name: "Pipeline" }).waitFor();
     await p.waitForTimeout(900);

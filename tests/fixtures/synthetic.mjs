@@ -114,3 +114,80 @@ export function synthetic(now = Date.now()) {
     };
   }
 }
+
+// ---------- Focus: priorities, their progress and a realistic review deck (all fictional people) ----------
+const PEOPLE = [
+  ["Maya Okafor", "Head of Infrastructure", "Halcyon AI Cloud"], ["Tomas Lindqvist", "VP Capacity", "Northwind Compute"],
+  ["Priya Raman", "Director, Data Centres", "Atlas Neocloud"], ["Daniel Mercer", "Partner", "Greyfield Infrastructure"],
+  ["Sofia Marchetti", "Investment Director", "Lumen Family Office"], ["James Whitaker", "Head of Development", "Midwest Digital Realty"],
+  ["Hannah Cole", "CFO", "Quarry GPU"], ["Omar Haddad", "Managing Director", "Levant Capital Partners"],
+  ["Erik Solberg", "Head of Site Acquisition", "Fjord Data Parks"], ["Rachel Kim", "VP Strategic Sourcing", "Vector AI Labs"],
+  ["Luca Bernardi", "Principal", "Arcadia Credit"], ["Grace Liu", "Head of Compute", "Meridian Models"],
+  ["Ben Ashworth", "Director", "Kestrel Asset Finance"], ["Nadia Farouk", "Head of Partnerships", "Sandline Cloud"],
+  ["Chris Doyle", "Development Director", "Lakeshore Power Campus"], ["Ines Duarte", "Head of Infra Debt", "Porto Infra Credit"],
+  ["Samir Patel", "COO", "Brightgrid Compute"],
+];
+
+export function focusData(now = Date.now()) {
+  const pid = (n) => `abababab-0000-4000-8000-00000000000${n}`;
+  const P = [
+    [1, "Al-Risha phase 1: find the offtaker", "Signed LOI from an offtaker for phase 1 (50 MW)", "Neoclouds and AI labs needing 50 MW+ in the Middle East", "Reach 25 neoclouds with the anonymised Al-Risha teaser", "powered_land"],
+    [2, "Mindstream ~$100m convertible note", "Term sheet from a lead investor", "Infrastructure funds and family offices writing $25m+ tickets", "Send the teaser to the 10 strongest investor mandates", "capital"],
+    [3, "SE Wisconsin brownfield site (Project A)", "NCNDA signed with a developer or hyperscaler", "US developers looking for powered land in the Midwest", "Shortlist 15 Midwest developers and draft first touches", "powered_land"],
+    [4, "New data-centre offtakers", "Three qualified offtaker conversations this month", "Hyperscalers, neoclouds and enterprise AI buyers", "Draft first touches to 20 offtakers", null],
+    [5, "Optio: find borrowers", "Two borrowers in diligence", "GPU operators needing asset-backed finance", "Find 25 GPU operators raising debt", "compute"],
+  ];
+  const priorities = P.map(([rank, title, goal, who, next_action, line]) => ({
+    id: pid(rank), rank, title, goal, who, next_action, line, mandate_ids: [], deal_ids: [], status: "active", notes: null,
+    created_at: "2026-10-23T08:00:00Z", updated_at: "2026-10-23T08:00:00Z",
+  }));
+  priorities.push({ id: pid(9), rank: 9, title: "UK gas genset bridge power", goal: null, who: null, next_action: null, line: "critical_power", mandate_ids: [], deal_ids: [], status: "paused", notes: null, created_at: "2026-10-10T08:00:00Z", updated_at: "2026-10-20T08:00:00Z" });
+  const tagOf = [1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 5, null, null, 1, 4];
+  const contacts = [];
+  const drafts = PEOPLE.map(([name, title, company], i) => {
+    const id = `eeeeeeee-2222-4000-8000-${hex(i + 1, 12)}`;
+    const cid = `cccccccc-2222-4000-8000-${hex(i + 1, 12)}`;
+    const first = name.split(" ")[0];
+    const li = i % 4 === 2;
+    const tag = tagOf[i];
+    const slug = name.toLowerCase().replace(/[^a-z]+/g, "-");
+    contacts.push({ id: cid, name, title, company, email: `${first.toLowerCase()}@example.com`, linkedin: `https://www.linkedin.com/in/${slug}-example`, country: "GB", lines: [], side: null, category: null, stage: "New", priority: null, channel: li ? "linkedin" : "email", source: "router", signal: null, first_contact: null, last_activity: null, next_follow_up: null, do_not_contact: false, notes: null, updated_at: "2026-10-22T09:00:00Z" });
+    const about = tag === 1
+      ? ["Phase 1 capacity in Jordan", `Hello ${first},\n\nWe're working with a 50 MW campus in Jordan with phase 1 power secured and land in hand. Given ${company}'s growth in the region, would a short call next week be useful to see whether it fits your 2027 capacity plan?\n\nI can share an anonymised teaser first.\n\nBest,\nKuran`, `${company} is expanding GPU capacity in the Gulf; matched to priority 1 by the router.`]
+      : tag === 2
+        ? ["A convertible note in AI infrastructure", `Hello ${first},\n\nWe're introducing a convertible note backing a powered data-centre platform with secured land and power. It sits squarely in the ticket size and themes ${company} has backed before.\n\nWould you like the one-page summary?\n\nBest,\nKuran`, `Investor mandate: infrastructure, $25m+ tickets.`]
+        : tag === 3
+          ? ["Brownfield site in SE Wisconsin", `Hello ${first},\n\nWe have an off-market brownfield site in south-east Wisconsin with a utility conversation under way. If ${company} is still looking for Midwest land, I can share details under NCNDA.\n\nBest,\nKuran`, `${company} filed for two Midwest campuses this year.`]
+          : tag === 5
+            ? ["Asset-backed finance for your GPUs", `Hello ${first},\n\nWe work with a lender providing asset-backed finance against GPU fleets. If ${company} is weighing debt for the next build-out, a short call could save you time.\n\nBest,\nKuran`, `${company} announced a 1,024-card expansion.`]
+            : ["Capacity for your next cluster", `Hello ${first},\n\nQuick one: we're seeing powered capacity come free in the Nordics and the Gulf for 2026–27. Is ${company} sourcing for anything in that window?\n\nBest,\nKuran`, null];
+    return {
+      id, kind: li ? "dm" : i % 5 === 4 ? "followup" : "email", channel: li ? "linkedin" : "email", contact_id: cid, to_name: name,
+      to_email: li ? null : `${first.toLowerCase()}@example.com`, company, subject: li ? null : about[0],
+      body: li ? `Hi ${first}, ${about[1].split("\n\n")[1].split(".")[0]}. Worth a quick chat?` : about[1],
+      link: li ? `https://www.linkedin.com/in/${slug}-example` : null, sequence_step: 1, status: i === 15 ? "manual" : "draft", note: about[2],
+      origin: "router", created_at: new Date(now - (20 - i) * 3600e3).toISOString(), approved_at: null, sent_at: null, replied_at: null,
+      priority_id: tag ? pid(tag) : null,
+    };
+  });
+  const replied = [
+    ["Leila Nasser", "Desert Peak Cloud", "Re: Phase 1 capacity in Jordan", 1, 1],
+    ["Mark Evans", "Ridgeway Capital", "Re: A convertible note in AI infrastructure", 2, 2],
+    ["Aoife Byrne", "Shannon Compute", "Re: Capacity for your next cluster", null, 3],
+  ].map(([to_name, company, subject, tag, d], i) => ({
+    id: `eeeeeeee-3333-4000-8000-${hex(i + 1, 12)}`, kind: "email", channel: "email", contact_id: null, to_name, to_email: null, company, subject,
+    body: "…", link: null, sequence_step: 1, status: "replied", note: null, origin: "router", created_at: new Date(now - 6 * 864e5).toISOString(),
+    approved_at: null, sent_at: new Date(now - 5 * 864e5).toISOString(), replied_at: new Date(now - d * 864e5).toISOString(), priority_id: tag ? pid(tag) : null,
+  }));
+  const count = (n, st) => drafts.filter((o) => o.priority_id === pid(n) && o.status === st).length;
+  const progress = [1, 2, 3, 4, 5, 9].map((n) => ({
+    priority_id: pid(n),
+    drafts: count(n, "draft"),
+    approved: [3, 1, 0, 0, 0, 0][[1, 2, 3, 4, 5, 9].indexOf(n)],
+    sent: [14, 9, 2, 0, 4, 6][[1, 2, 3, 4, 5, 9].indexOf(n)],
+    replied: [2, 1, 0, 0, 0, 1][[1, 2, 3, 4, 5, 9].indexOf(n)],
+    manual: count(n, "manual"),
+    last_sent_at: null,
+  }));
+  return { priorities, progress, outreach: [...drafts, ...replied], contacts };
+}

@@ -262,7 +262,7 @@
         "confidence": "partial",
         "to_ask": "Minimum ticket?",
         "card": {
-          "ticket": "$20–50m",
+          "ticket": "$20\u201350m",
           "geography": "UK, Nordics"
         }
       }
@@ -568,7 +568,8 @@
         "subject": "Bridge power for your Ealing build",
         "body": "Hello Alex,\nShort note on bridge power.",
         "link": null,
-        "status": "draft"
+        "status": "draft",
+        "priority_id": "abababab-0000-4000-8000-000000000001"
       },
       {
         "channel": "linkedin",
@@ -588,7 +589,153 @@
         "subject": null,
         "body": "Hi Alex, good to connect.",
         "link": "https://www.linkedin.com/in/alex-example",
-        "status": "manual"
+        "status": "manual",
+        "priority_id": null
+      },
+      {
+        "channel": "email",
+        "contact_id": "cccccccc-0000-4000-8000-000000000001",
+        "to_name": "Alex Example",
+        "to_email": "alex@example.com",
+        "company": "Example Power Ltd",
+        "sequence_step": 1,
+        "note": null,
+        "origin": "router",
+        "created_at": "2026-10-15T08:00:00Z",
+        "approved_at": "2026-10-15T09:00:00Z",
+        "sent_at": "2026-10-15T11:53:00Z",
+        "replied_at": "2026-10-20T10:00:00Z",
+        "id": "eeeeeeee-1111-4000-8000-000000000003",
+        "kind": "email",
+        "subject": "Capacity in Jordan",
+        "body": "Hello Alex,\nEarlier note.",
+        "link": null,
+        "status": "replied",
+        "priority_id": "abababab-0000-4000-8000-000000000001"
+      }
+    ],
+    "priorities": [
+      {
+        "id": "abababab-0000-4000-8000-000000000001",
+        "rank": 1,
+        "title": "Al-Risha phase 1: find the offtaker",
+        "goal": "Signed LOI from an offtaker for phase 1",
+        "who": "Neoclouds and AI labs needing 50 MW+ in the Middle East",
+        "next_action": "Reach 25 neoclouds with the anonymised teaser",
+        "line": "powered_land",
+        "mandate_ids": [],
+        "deal_ids": [],
+        "status": "active",
+        "notes": null,
+        "created_at": "2026-10-23T08:00:00Z",
+        "updated_at": "2026-10-23T08:00:00Z"
+      },
+      {
+        "id": "abababab-0000-4000-8000-000000000002",
+        "rank": 2,
+        "title": "Mindstream ~$100m convertible note",
+        "goal": "Term sheet from a lead investor",
+        "who": "Infrastructure funds and family offices writing $25m+ tickets",
+        "next_action": "Send the teaser to the 10 strongest investor mandates",
+        "line": "capital",
+        "mandate_ids": [],
+        "deal_ids": [],
+        "status": "active",
+        "notes": null,
+        "created_at": "2026-10-23T08:00:00Z",
+        "updated_at": "2026-10-23T08:00:00Z"
+      },
+      {
+        "id": "abababab-0000-4000-8000-000000000003",
+        "rank": 3,
+        "title": "SE Wisconsin brownfield site (Project A)",
+        "goal": "NCNDA signed with a developer or hyperscaler",
+        "who": "US developers looking for powered land in the Midwest",
+        "next_action": "Ask Claude to shortlist 15 Midwest developers",
+        "line": "powered_land",
+        "mandate_ids": [],
+        "deal_ids": [],
+        "status": "active",
+        "notes": null,
+        "created_at": "2026-10-23T08:00:00Z",
+        "updated_at": "2026-10-23T08:00:00Z"
+      },
+      {
+        "id": "abababab-0000-4000-8000-000000000004",
+        "rank": 4,
+        "title": "New data-centre offtakers",
+        "goal": "Three qualified offtaker conversations",
+        "who": "Hyperscalers, neoclouds and enterprise AI buyers",
+        "next_action": "Draft first touches to 20 offtakers",
+        "line": null,
+        "mandate_ids": [],
+        "deal_ids": [],
+        "status": "active",
+        "notes": null,
+        "created_at": "2026-10-23T08:00:00Z",
+        "updated_at": "2026-10-23T08:00:00Z"
+      },
+      {
+        "id": "abababab-0000-4000-8000-000000000005",
+        "rank": 5,
+        "title": "Optio: find borrowers",
+        "goal": "Two borrowers in diligence",
+        "who": "GPU operators needing asset-backed finance",
+        "next_action": "Find 25 GPU operators raising debt",
+        "line": "compute",
+        "mandate_ids": [],
+        "deal_ids": [],
+        "status": "active",
+        "notes": null,
+        "created_at": "2026-10-23T08:00:00Z",
+        "updated_at": "2026-10-23T08:00:00Z"
+      }
+    ],
+    "priority_progress": [
+      {
+        "priority_id": "abababab-0000-4000-8000-000000000001",
+        "drafts": 1,
+        "approved": 2,
+        "sent": 6,
+        "replied": 1,
+        "manual": 0,
+        "last_sent_at": "2026-10-22T11:53:00Z"
+      },
+      {
+        "priority_id": "abababab-0000-4000-8000-000000000002",
+        "drafts": 0,
+        "approved": 0,
+        "sent": 0,
+        "replied": 0,
+        "manual": 0,
+        "last_sent_at": null
+      },
+      {
+        "priority_id": "abababab-0000-4000-8000-000000000003",
+        "drafts": 0,
+        "approved": 0,
+        "sent": 0,
+        "replied": 0,
+        "manual": 0,
+        "last_sent_at": null
+      },
+      {
+        "priority_id": "abababab-0000-4000-8000-000000000004",
+        "drafts": 0,
+        "approved": 0,
+        "sent": 0,
+        "replied": 0,
+        "manual": 0,
+        "last_sent_at": null
+      },
+      {
+        "priority_id": "abababab-0000-4000-8000-000000000005",
+        "drafts": 0,
+        "approved": 0,
+        "sent": 0,
+        "replied": 0,
+        "manual": 0,
+        "last_sent_at": null
       }
     ]
   },
