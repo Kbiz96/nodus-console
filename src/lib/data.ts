@@ -3,7 +3,7 @@
 import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
-import type { SearchAll } from "./types.ts";
+import type { Priority, PriorityProgress, SearchAll } from "./types.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
 
@@ -186,6 +186,82 @@ export async function mandateCardUpdate(
 /** One-off import of the old HQ export. The file is sent only to this database function. */
 export async function crmImport(p: unknown): Promise<Record<string, unknown>> {
   return (must(await supabase.rpc("crm_import", { p })) ?? {}) as Record<string, unknown>;
+}
+
+// ---------- priorities (Focus) ----------
+// Kuran's short list of what to close. RLS lets his login read and write the table directly.
+
+export const PRIORITY_COLS = "id,rank,title,goal,who,next_action,line,mandate_ids,deal_ids,status,notes,created_at,updated_at";
+
+export async function prioritiesLoad(): Promise<{ priorities: Priority[]; progress: Map<string, PriorityProgress> }> {
+  const [ps, pr] = await Promise.all([
+    supabase.from("priorities").select(PRIORITY_COLS).order("rank", { ascending: true }).limit(200).then((r) => must(r) as unknown as Priority[]),
+    supabase.from("priority_progress").select("priority_id,drafts,approved,sent,replied,manual,last_sent_at").limit(500)
+      .then((r) => must(r) as unknown as PriorityProgress[]),
+  ]);
+  const progress = new Map<string, PriorityProgress>();
+  for (const p of pr) {
+    progress.set(p.priority_id, {
+      ...p,
+      drafts: Number(p.drafts) || 0,
+      approved: Number(p.approved) || 0,
+      sent: Number(p.sent) || 0,
+      replied: Number(p.replied) || 0,
+      manual: Number(p.manual) || 0,
+    });
+  }
+  return { priorities: [...ps].sort((a, b) => a.rank - b.rank), progress };
+}
+
+export type PriorityPatch = Partial<Pick<Priority, "rank" | "title" | "goal" | "who" | "next_action" | "line" | "status" | "notes">>;
+
+export async function priorityUpdate(id: string, patch: PriorityPatch): Promise<void> {
+  mustChange(await supabase.from("priorities").update(patch).eq("id", id).select("id"), "The priority");
+}
+
+export async function priorityInsert(p: { title: string; goal: string | null; who: string | null; next_action: string | null; rank: number }): Promise<void> {
+  const rows = must(await supabase.from("priorities").insert({ ...p, status: "active" }).select("id")) as unknown[] | null;
+  if (!rows || rows.length === 0) throw new Error("The priority was not added. Reload and try again.");
+}
+
+/** Swap the ranks of two priorities (move up or down). */
+export async function prioritySwap(a: Pick<Priority, "id" | "rank">, b: Pick<Priority, "id" | "rank">): Promise<void> {
+  const ra = a.rank === b.rank ? b.rank + 1 : b.rank;
+  await priorityUpdate(a.id, { rank: ra });
+  await priorityUpdate(b.id, { rank: a.rank });
+}
+
+/**
+ * Copy text straight away, inside the click, so it still works when the same click opens a new tab
+ * (the new tab takes focus, which makes the asynchronous clipboard refuse). Falls back to the clipboard API.
+ */
+export function copyNow(text: string): boolean {
+  let ok = false;
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "0";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    ok = document.execCommand("copy");
+    ta.remove();
+  } catch {
+    ok = false;
+  }
+  if (!ok) {
+    try {
+      void navigator.clipboard?.writeText(text).catch(() => undefined);
+      ok = Boolean(navigator.clipboard);
+    } catch {
+      ok = false;
+    }
+  }
+  return ok;
 }
 
 /** Tell the nav that outreach changed, so the drafts badge refreshes. */

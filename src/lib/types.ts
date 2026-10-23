@@ -127,4 +127,38 @@ export interface Outreach {
   approved_at: string | null;
   sent_at: string | null;
   replied_at: string | null;
+  /** Which priority this message serves (migration 0019). */
+  priority_id?: string | null;
+}
+
+// ---------- priorities (migration 0019) ----------
+
+export type PriorityStatus = "active" | "paused" | "done";
+
+/** One of Kuran's few live priorities: what Nodus is trying to close this week. */
+export interface Priority {
+  id: string;
+  rank: number;
+  title: string;
+  goal: string | null;
+  who: string | null;
+  next_action: string | null;
+  line: string | null;
+  mandate_ids: string[] | null;
+  deal_ids: string[] | null;
+  status: PriorityStatus;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A row of the priority_progress view: outreach counts per priority. */
+export interface PriorityProgress {
+  priority_id: string;
+  drafts: number;
+  approved: number;
+  sent: number;
+  replied: number;
+  manual: number;
+  last_sent_at: string | null;
 }

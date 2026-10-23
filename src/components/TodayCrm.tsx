@@ -11,7 +11,7 @@ import { DraftCard, ManualCard } from "./OutreachCards.tsx";
 import { Empty, ErrorBox, ExtLink, Loading } from "./ui.tsx";
 
 export const OUTREACH_COLS =
-  "id,kind,channel,contact_id,to_name,to_email,company,subject,body,link,sequence_step,status,note,origin,created_at,approved_at,sent_at,replied_at";
+  "id,kind,channel,contact_id,to_name,to_email,company,subject,body,link,sequence_step,status,note,origin,created_at,approved_at,sent_at,replied_at,priority_id";
 export const DEAL_COLS =
   "id,deal,contact_id,counterparty,line,heat,rank,stage,principal_verified,ncnda_signed,fee_signed,kyc_done,proof_done,next_date,next_step,value,terms,notes,updated_at";
 const SHOW_DRAFTS = 50;

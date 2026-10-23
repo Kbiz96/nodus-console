@@ -92,3 +92,23 @@ export const OTHER_COLOUR = "#9EC5B8";
 export function lineColour(l: string | null | undefined): string {
   return (l && LINE_COLOUR[l]) || OTHER_COLOUR;
 }
+
+// ---------- line filter (critical power off by default) ----------
+
+export const DEFAULT_LINES: readonly string[] = LINES.filter((l) => l !== "critical_power");
+
+/** The ?lines= value as a set: missing means the default (everything but critical power), "all" means every line. */
+export function parseLines(v: string | null): Set<string> {
+  if (v === "all") return new Set(LINES);
+  const picked = (v ?? "").split(",").filter((x) => (LINES as readonly string[]).includes(x));
+  return new Set(picked.length ? picked : DEFAULT_LINES);
+}
+
+/** The ?lines= value for a set of lines: null for the default, "all" for every line. */
+export function linesParam(n: Set<string>): string | null {
+  if (n.size === 0) return null;
+  if (n.size === LINES.length) return "all";
+  if (n.size === DEFAULT_LINES.length && DEFAULT_LINES.every((l) => n.has(l))) return null;
+  return LINES.filter((l) => n.has(l)).join(",");
+}
+
