@@ -5,5 +5,7 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   base: "./",
   plugins: [react()],
-  build: { outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 800 },
+  // MapLibre's web worker is an ES module.
+  worker: { format: "es" },
+  build: { outDir: "dist", sourcemap: false, chunkSizeWarningLimit: 1400 },
 });

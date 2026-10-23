@@ -80,3 +80,15 @@ export function lineLabel(l: string | null | undefined): string {
 export function isLine(v: unknown): v is Line {
   return typeof v === "string" && (LINES as readonly string[]).includes(v);
 }
+
+/** One colour per line, derived from the brand teal and checked for contrast on the dark map and panels. */
+export const LINE_COLOUR: Record<string, string> = {
+  critical_power: "#E9B872",
+  compute: "#86BCF5",
+  capital: "#C5A8F5",
+  powered_land: "#7FDCB8",
+};
+export const OTHER_COLOUR = "#9EC5B8";
+export function lineColour(l: string | null | undefined): string {
+  return (l && LINE_COLOUR[l]) || OTHER_COLOUR;
+}

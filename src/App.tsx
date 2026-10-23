@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./lib/supabase.ts";
 import { isApproved } from "./lib/data.ts";
 import { friendlyError, isNotAllowed } from "./lib/rules.ts";
 import Layout from "./components/Layout.tsx";
-import { NOT_APPROVED, NotFound } from "./components/ui.tsx";
+import { Logo } from "./components/Brand.tsx";
+import { Loading, NOT_APPROVED, NotFound } from "./components/ui.tsx";
 import Login from "./pages/Login.tsx";
 import Today from "./pages/Today.tsx";
 import Matches from "./pages/Matches.tsx";
@@ -23,6 +24,9 @@ import Contacts from "./pages/Contacts.tsx";
 import Deals from "./pages/Deals.tsx";
 import Outreach from "./pages/Outreach.tsx";
 import Import from "./pages/Import.tsx";
+import Engine from "./pages/Engine.tsx";
+// The map library is large: load it only when the Map page is opened.
+const MapView = lazy(() => import("./pages/MapView.tsx"));
 
 type Access = "checking" | "approved" | "refused" | { error: string };
 
@@ -90,6 +94,8 @@ export default function App() {
     <Layout email={session.user.email ?? null} onSignOut={signOut}>
       <Routes>
         <Route path="/" element={<Today />} />
+        <Route path="/engine" element={<Engine />} />
+        <Route path="/map" element={<Suspense fallback={<Loading what="Loading the map…" />}><MapView /></Suspense>} />
         <Route path="/matches" element={<Matches />} />
         <Route path="/matches/:id" element={<MatchDetail />} />
         <Route path="/opportunities" element={<Opportunities />} />
@@ -115,7 +121,8 @@ function Splash({ text, children }: { text: string; children?: React.ReactNode }
   return (
     <div className="login-wrap">
       <div className="card login-card" role="status">
-        <h1>Nodus Origination</h1>
+        <Logo />
+        <h1>Origination console</h1>
         <p>{text}</p>
         {children}
       </div>
