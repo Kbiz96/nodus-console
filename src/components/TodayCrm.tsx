@@ -74,7 +74,7 @@ export default function TodayCrm() {
   return (
     <>
       <section className="stack">
-        <div className="row-between wrap">
+        <div className="sec-title">
           <h2>Approve ({fmtNumber(drafts.total)})</h2>
           {drafts.rows.length > 1 && !confirmAll && (
             <button className="btn small" type="button" onClick={() => setConfirmAll(true)} disabled={bulk.busy}>Approve all shown</button>
@@ -93,17 +93,17 @@ export default function TodayCrm() {
         {bulk.text && <p className={`${bulk.ok ? "ok" : "error"} small`} role="status">{bulk.text}</p>}
         {drafts.rows.length === 0 ? <Empty>Nothing waiting for approval.</Empty> : drafts.rows.map((o) => <DraftCard key={`${o.id}-${o.subject ?? ""}-${o.body ?? ""}`} o={o} onChanged={reload} />)}
         {drafts.total > drafts.rows.length && (
-          <p><Link to="/outreach?status=draft">Showing the newest {drafts.rows.length}. See all {fmtNumber(drafts.total)} →</Link></p>
+          <p><Link to="/outreach?status=draft">Showing the newest {drafts.rows.length}. See all {fmtNumber(drafts.total)}</Link></p>
         )}
       </section>
 
       <section className="stack">
-        <h2>LinkedIn to send ({fmtNumber(manual.length)})</h2>
+        <div className="sec-title"><h2>LinkedIn to send ({fmtNumber(manual.length)})</h2></div>
         {manual.length === 0 ? <Empty>Nothing to send on LinkedIn.</Empty> : manual.map((o) => <ManualCard key={o.id} o={o} onChanged={reload} />)}
       </section>
 
       <section className="stack">
-        <h2>Do these first ({fmtNumber(actions.length)})</h2>
+        <div className="sec-title"><h2>Do these first ({fmtNumber(actions.length)})</h2></div>
         {actions.length === 0 ? (
           <Empty>No open actions.</Empty>
         ) : (
@@ -132,7 +132,7 @@ export default function TodayCrm() {
       </section>
 
       <section className="stack">
-        <h2>Deals due ({fmtNumber(deals.length)})</h2>
+        <div className="sec-title"><h2>Deals due ({fmtNumber(deals.length)})</h2></div>
         {deals.length === 0 ? (
           <Empty>No deals due today.</Empty>
         ) : (

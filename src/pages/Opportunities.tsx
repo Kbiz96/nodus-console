@@ -62,7 +62,8 @@ export default function Opportunities() {
 
   return (
     <div className="stack">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Pipeline</span>
         <h1>Opportunities</h1>
         <p className="muted">
           Each one is a real-world situation: someone with power, kit, land or capital to offer (supply), or someone

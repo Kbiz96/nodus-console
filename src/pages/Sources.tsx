@@ -47,7 +47,8 @@ export default function Sources() {
   const cost = rows.filter((r) => r.enabled).reduce((a, r) => a + Number(r.monthly_cost_gbp || 0), 0);
   return (
     <div className="stack">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Intelligence</span>
         <h1>Sources</h1>
         <p className="muted">Where the engine looks every morning, and whether each one is working.</p>
       </div>

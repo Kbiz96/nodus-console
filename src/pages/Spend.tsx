@@ -96,7 +96,8 @@ export default function Spend() {
   return (
     <div className="stack-lg">
       <section>
-        <div className="section-head">
+        <div className="section-head page-head-block">
+          <span className="eyebrow">Intelligence</span>
           <h1>Spend</h1>
           <p className="muted">Credits used this month to find decision makers (Apollo, Clay and Vibe Prospecting), and anything waiting for your OK.</p>
         </div>

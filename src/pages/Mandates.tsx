@@ -73,7 +73,8 @@ export default function Mandates() {
 
   return (
     <div className="stack-lg">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Pipeline</span>
         <h1>Mandates</h1>
         <p className="muted">
           Standing requirements from your network. Every morning the engine checks new opportunities against each active

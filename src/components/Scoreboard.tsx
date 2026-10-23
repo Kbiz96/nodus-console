@@ -3,7 +3,7 @@ import { fmtDay } from "../lib/crm.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { scoreRows, trackedLate, weekPeriods } from "../lib/scoreboard.ts";
-import { ErrorBox, Loading } from "./ui.tsx";
+import { CountUp, ErrorBox, Loading } from "./ui.tsx";
 
 async function load() {
   const { thisWeek, lastWeek } = weekPeriods();
@@ -16,12 +16,12 @@ export default function Scoreboard() {
   const { data, error, loading, reload } = useLoad(load, "scoreboard");
   return (
     <section>
-      <div className="section-head">
+      <div className="sec-title">
         <h2>Scoreboard</h2>
         {data && (
-          <p className="muted">
-            This week ({fmtDay(data.thisWeek.firstDay)} – {fmtDay(data.thisWeek.lastDay)}) against last week.
-          </p>
+          <span className="muted small mono">
+            {fmtDay(data.thisWeek.firstDay)} – {fmtDay(data.thisWeek.lastDay)}, against last week
+          </span>
         )}
       </div>
       {error && !data ? (
@@ -32,8 +32,8 @@ export default function Scoreboard() {
         <>
           <div className="stats">
             {data.rows.map((r) => (
-              <div key={r.key} className="stat">
-                <span className="stat-num">{fmtNumber(r.thisWeek)}</span>
+              <div key={r.key} className={r.thisWeek > 0 ? "stat lit" : "stat"}>
+                <span className="stat-num"><CountUp value={r.thisWeek} /></span>
                 <span className="stat-label">{r.label}</span>
                 <span className="stat-sub">
                   Last week {fmtNumber(r.lastWeek)}{" "}

@@ -56,7 +56,8 @@ export default function Deals() {
 
   return (
     <div className="stack-lg">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Pipeline</span>
         <h1>Deals</h1>
         <p className="muted">Grouped by line; hot first. Gates are principal verified, NCNDA, fee agreement, KYC and proof.</p>
       </div>

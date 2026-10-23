@@ -39,7 +39,8 @@ export default function Search() {
 
   return (
     <div className="stack">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Everything</span>
         <h1>Search</h1>
         <p className="muted">
           Looks through organisations, opportunities, signals, matches and mandates. Several words must all appear. The

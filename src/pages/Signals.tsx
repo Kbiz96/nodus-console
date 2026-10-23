@@ -55,7 +55,8 @@ export default function Signals() {
 
   return (
     <div className="stack">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Intelligence</span>
         <h1>Signals</h1>
         <p className="muted">
           Individual facts the engine found, each with the exact words from the source.{" "}

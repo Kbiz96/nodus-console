@@ -55,7 +55,8 @@ export default function Import() {
 
   return (
     <div className="stack-lg">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Setup</span>
         <h1>Import</h1>
         <p className="muted">One-off: brings your old HQ contacts, deals, actions, drafts and mandate cards into the console.</p>
       </div>

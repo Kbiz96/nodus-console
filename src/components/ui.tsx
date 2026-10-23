@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { GATE_LABEL, LINE_LABEL, MATCH_STATUS_LABEL, SANCTIONS_LABEL, SCORE_PARTS } from "../lib/labels.ts";
 import { fmtNumber, hostOf, safeHref } from "../lib/format.ts";
@@ -8,7 +8,7 @@ export const NOT_APPROVED = "This account isn't approved for the Nodus console."
 
 export function useTitle(title: string) {
   useEffect(() => {
-    document.title = title ? `${title} · Nodus` : "Nodus Origination";
+    document.title = title ? `${title} · Nodus` : "Nodus console";
   }, [title]);
 }
 
@@ -141,4 +141,57 @@ export function Pager({
       {page < pages ? <Link to={href(page + 1)}>Next →</Link> : <span />}
     </nav>
   );
+}
+
+/** Page header: an eyebrow, a tight headline, one line of help and optional actions on the right. */
+export function PageHead({ eyebrow, title, children, actions }: { eyebrow?: string; title: string; children?: ReactNode; actions?: ReactNode }) {
+  return (
+    <header className="page-head">
+      <div className="section-head">
+        {eyebrow && <span className="eyebrow">{eyebrow}</span>}
+        <h1>{title}</h1>
+        {children && <p className="muted">{children}</p>}
+      </div>
+      {actions}
+    </header>
+  );
+}
+
+function reducedMotion(): boolean {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return true;
+  }
+}
+
+/** A number that counts up once when it first appears (instantly when motion is reduced). */
+export function CountUp({ value, format = fmtNumber }: { value: number; format?: (n: number) => string }) {
+  const [shown, setShown] = useState(() => (reducedMotion() ? value : 0));
+  const from = useRef(0);
+  useEffect(() => {
+    if (reducedMotion() || !Number.isFinite(value)) {
+      setShown(value);
+      return;
+    }
+    const start = performance.now();
+    const a = from.current;
+    const dur = 650;
+    let raf = 0;
+    const step = (t: number) => {
+      const k = Math.min(1, (t - start) / dur);
+      const e = 1 - Math.pow(1 - k, 3);
+      setShown(k >= 1 ? value : Math.round(a + (value - a) * e));
+      if (k < 1) raf = requestAnimationFrame(step);
+      else from.current = value;
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [value]);
+  return <span aria-label={format(value)}>{format(shown)}</span>;
+}
+
+/** The line colour swatch used in legends. */
+export function Swatch({ colour, size = 8 }: { colour: string; size?: number }) {
+  return <i aria-hidden style={{ background: colour, width: size, height: size, display: "inline-block", flexShrink: 0 }} />;
 }

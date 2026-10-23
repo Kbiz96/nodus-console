@@ -1,4 +1,4 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { supabase, mustCount, must } from "../lib/supabase.ts";
 import { MATCH_CARD_COLS, searchAll } from "../lib/data.ts";
 import { pageFrom, parseFilters, type Filters } from "../lib/filters.ts";
@@ -51,7 +51,12 @@ export default function Matches() {
 
   return (
     <div className="stack">
-      <div className="section-head">
+      <nav className="tabs" aria-label="Match views">
+        <Link to="/engine">Engine view</Link>
+        <Link to="/matches" className="active" aria-current="page">List</Link>
+      </nav>
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Pipeline</span>
         <h1>Matches</h1>
         <p className="muted">
           Every pairing the engine has proposed. Shortlist the good ones, reject the rest with a reason, and send the

@@ -32,7 +32,8 @@ export default function Outreach() {
 
   return (
     <div className="stack-lg">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Pipeline</span>
         <h1>Outreach</h1>
         <p className="muted">Every email and LinkedIn message, by status. Nothing is sent without your approval.</p>
       </div>

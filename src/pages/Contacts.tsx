@@ -65,7 +65,8 @@ export default function Contacts() {
 
   return (
     <div className="stack-lg">
-      <div className="section-head">
+      <div className="section-head page-head-block">
+        <span className="eyebrow">Pipeline</span>
         <h1>Contacts</h1>
         <p className="muted">Everyone in the Nodus CRM. Tap a name to update their stage, follow-up date or notes.</p>
       </div>

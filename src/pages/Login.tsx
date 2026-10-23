@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { supabase } from "../lib/supabase.ts";
 import { useTitle } from "../components/ui.tsx";
+import { Logo } from "../components/Brand.tsx";
 
 export default function Login() {
   useTitle("Sign in");
@@ -56,7 +57,8 @@ export default function Login() {
   return (
     <div className="login-wrap">
       <div className="card login-card">
-        <h1>Nodus Origination</h1>
+        <Logo />
+        <h1>Origination console</h1>
         <p className="muted">Private to Nodus Partners. Please sign in.</p>
         <form onSubmit={submit} className="stack">
           <label className="field">
