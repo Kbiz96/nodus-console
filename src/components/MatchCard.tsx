@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import type { MatchCardRow } from "../lib/types.ts";
 import { fmtDate } from "../lib/format.ts";
+import { feedbackLine } from "../lib/feedback.ts";
 import { ExtLink, GateBadge, LineBadge, Score, ScoreBars, StatusBadge } from "./ui.tsx";
 import MatchActions from "./MatchActions.tsx";
 
@@ -9,6 +10,9 @@ export default function MatchCard({ m, actions = true, onChanged }: { m: MatchCa
   const why = Array.isArray(ex.why) ? ex.why : [];
   const unknowns = Array.isArray(ex.unknowns) ? ex.unknowns : [];
   const evidence = Array.isArray(ex.evidence) ? ex.evidence : [];
+  const learned = feedbackLine(ex.feedback);
+  // The engine also adds the down-weight to "why"; show it once, in its own note.
+  const whyShown = learned ? why.filter((w) => !String(w).startsWith("Down-weighted ")) : why;
   return (
     <article className="card match">
       <header className="match-head">
@@ -49,11 +53,16 @@ export default function MatchCard({ m, actions = true, onChanged }: { m: MatchCa
       <div className="match-body">
         <ScoreBars scores={m.scores} />
         <div className="match-text">
-          {why.length > 0 && (
+          {whyShown.length > 0 && (
             <>
               <h4>Why</h4>
-              <ul>{why.map((w, i) => <li key={i}>{String(w)}</li>)}</ul>
+              <ul>{whyShown.map((w, i) => <li key={i}>{String(w)}</li>)}</ul>
             </>
+          )}
+          {learned && (
+            <p className="note small" title={`Score before your feedback: ${ex.feedback?.raw_total ?? "—"}`}>
+              Learned from your rejections. {learned}
+            </p>
           )}
           {unknowns.length > 0 && (
             <>

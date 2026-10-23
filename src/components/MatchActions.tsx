@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { downloadJson, matchDecide, matchExport } from "../lib/data.ts";
+import { downloadJson, matchDecide, matchExport, matchReject } from "../lib/data.ts";
+import { NOTE_MAX, REJECT_REASONS, rejectProblem } from "../lib/feedback.ts";
 import { exportFilename } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 
@@ -8,6 +9,8 @@ export default function MatchActions({ id, status, onChanged }: { id: string; st
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [rejecting, setRejecting] = useState(false);
   const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const problem = rejectProblem(reason, note);
 
   const run = async (fn: () => Promise<string>) => {
     setPending(true);
@@ -17,6 +20,7 @@ export default function MatchActions({ id, status, onChanged }: { id: string; st
       setMsg({ ok: true, text });
       setRejecting(false);
       setReason("");
+      setNote("");
       onChanged?.();
     } catch (e) {
       setMsg({ ok: false, text: friendlyError(e) });
@@ -64,16 +68,30 @@ export default function MatchActions({ id, status, onChanged }: { id: string; st
           className="reject-form"
           onSubmit={(e) => {
             e.preventDefault();
-            void run(async () => (await matchDecide(id, "reject", reason.trim()), "Rejected."));
+            if (problem) return;
+            void run(async () => (await matchReject(id, reason, note), "Rejected. The engine will learn from this."));
           }}
         >
-          <label className="field grow">
-            <span>Why are you rejecting this? (kept for the engine to learn from)</span>
-            <input value={reason} onChange={(e) => setReason(e.target.value)} required minLength={3} maxLength={2000} placeholder="e.g. Site already sold" />
+          <label className="field">
+            <span>Reason</span>
+            <select value={reason} onChange={(e) => setReason(e.target.value)} required>
+              <option value="">Pick a reason…</option>
+              {REJECT_REASONS.map((r) => (
+                <option key={r.code} value={r.code}>{r.label}</option>
+              ))}
+            </select>
           </label>
-          <button className="btn danger" type="submit" disabled={pending || reason.trim().length < 3}>
+          <label className="field grow">
+            <span>Note {reason === "other" ? "(needed for Other)" : "(optional)"}</span>
+            <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={NOTE_MAX} placeholder="e.g. Site already sold" />
+          </label>
+          <button className="btn danger" type="submit" disabled={pending || problem !== null} title={problem ?? undefined}>
             Confirm reject
           </button>
+          <p className="muted small reject-hint">
+            Kept for the engine to learn from: it stops proposing this organisation for this mandate, and lowers
+            similar matches you reject more than once for the same reason.
+          </p>
         </form>
       )}
       {pending && <p className="muted small">Saving…</p>}

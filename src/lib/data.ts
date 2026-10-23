@@ -41,6 +41,11 @@ export async function matchDecide(id: string, action: "shortlist" | "reject" | "
   must(await supabase.rpc("match_decide", { p_match: id, p_action: action, p_reason: reason ?? null }));
 }
 
+/** Reject with a reason from the list (and an optional note); the engine learns from it. */
+export async function matchReject(id: string, reason: string, note: string): Promise<void> {
+  must(await supabase.rpc("match_reject", { p_match: id, p_reason: reason, p_note: note.trim() || null }));
+}
+
 export async function matchExport(id: string): Promise<unknown> {
   return must(await supabase.rpc("match_export", { p_match: id }));
 }

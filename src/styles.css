@@ -90,6 +90,12 @@ blockquote {
 .stat { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 0.75rem 0.85rem; display: flex; flex-direction: column; gap: 0.15rem; }
 .stat-num { font-size: 1.4rem; font-weight: 650; color: var(--brand); font-variant-numeric: tabular-nums; }
 .stat-label { font-size: 0.8rem; color: var(--muted); }
+.stat-sub { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.delta { font-weight: 650; margin-left: 0.15rem; }
+.delta-up { color: var(--good); }
+.delta-down { color: var(--bad); }
+.delta-same { color: var(--muted); }
+.reject-hint { flex-basis: 100%; margin: 0; }
 
 /* badges */
 .meta { display: flex; flex-wrap: wrap; gap: 0.4rem 0.6rem; align-items: center; font-size: 0.82rem; margin-top: 0.3rem; }

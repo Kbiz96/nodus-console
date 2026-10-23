@@ -1,3 +1,5 @@
+import type { FeedbackExplanation } from "./feedback.ts";
+
 export interface Evidence {
   title?: string;
   url?: string;
@@ -8,6 +10,7 @@ export interface Explanation {
   unknowns?: string[];
   next_step?: string;
   evidence?: Evidence[];
+  feedback?: FeedbackExplanation;
 }
 
 /** A row of the v_match_cards view. */
