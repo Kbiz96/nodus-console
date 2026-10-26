@@ -3,12 +3,23 @@
 The private web console for the Nodus Origination Engine: Focus, Review, Priorities, Map and Engine, with Today, Contacts,
 Deals, Outreach, Matches, Opportunities, Organisations, Signals, Mandates, Sources, Spend, Import and Search under More.
 
-- **Focus** (`#/`, the home screen): the live priorities (table `priorities`, progress from the `priority_progress` view)
-  as large cards, top three first, each with one obvious next action. **Ask Claude** opens `claude.ai/new?q=…` with a
-  ready instruction (and copies it); the small menu has preset asks. **Do now** is the review deck, one draft at a time,
-  priority-tagged drafts first. **Waiting on others** (collapsed) lists replies with a "Draft reply with Claude" button.
-  Calm mode (toggle in the top strip, remembered in this browser, on by default for Focus, Review and Priorities) hides
-  the strip counters and the count-up and glow effects.
+- **Focus** (`#/`, the home screen) opens with **Signed mandates**: one large card per mandate, built from the active
+  priorities (table `priorities`, progress from `priority_progress`). Priorities that share a linked deal (or the same
+  title before the colon) share one card with a switch per workstream, e.g. Al-Risha offtakers and investors. Each card
+  shows the paperwork from the linked deal (`deals.ncnda_signed`, `fee_signed`: "Signed", "Fee protected ✓", "NCNDA ✓"
+  or "Fee letter outstanding"), the deal's next step and date (amber when overdue), progress, the next action and
+  **Best in your network**: the top five people already in the CRM from `priority_network` (up to fifteen with
+  "See all"), each with **Draft for me** (opens Claude with the instruction), LinkedIn and Contact. A supplier priority
+  (target line Compute-Sell or Power-Sell) labels the list "Suppliers and integrators in your network" and its main
+  button is **Ask Claude: get quotes** (an anonymised RFQ). The top three priorities show; the rest are one tap away.
+  **Ask Claude** opens `claude.ai/new?q=…` with a ready instruction (and copies it); the small menu has preset asks.
+  **Do now** is the review deck, one draft at a time, priority-tagged drafts first. **Waiting on others** (collapsed)
+  lists replies with a "Draft reply with Claude" button. Calm mode (toggle in the top strip, remembered in this
+  browser, on by default for Focus, Review and Priorities) hides the strip counters and the count-up and glow effects.
+- **Parked drafts** (`outreach.status = 'parked'`) never appear in Review, counts, badges or LinkedIn lists. Outreach
+  has a collapsed "Parked (n)" list with **Bring back**, which sets the draft back to `draft`.
+- **Enrich & draft** (opportunity page, Engine panel, Matches): asks for decision makers through `enrich_request` (the
+  same path as Enrich) and opens Claude to enrich with Apollo and draft first touches for approval.
 - **Review** (`#/review`, `#/review?priority=<id>`): the deck on its own. Email: Approve & send (through
   `outreach_decide`; the send batch sends at 09:53, 12:53 or 15:53 UK on weekdays), Skip, Edit, Later. LinkedIn: Copy &
   open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: A, S, E, C, L. There is no Undo,

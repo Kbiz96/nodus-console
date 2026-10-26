@@ -93,11 +93,14 @@ export function PriorityCard({ p, pr, above, below, onChanged }: CardProps) {
   );
 }
 
-function AskMenu({ p }: { p: Priority }) {
+export function AskMenu({ p, extra = [] }: { p: Priority; extra?: { label: string; prompt: string }[] }) {
   return (
     <details className="ask-menu">
       <summary>Other asks</summary>
       <div className="ask-list">
+        {extra.map((a) => (
+          <AskClaude key={a.label} prompt={a.prompt} className="ask-item">{a.label}</AskClaude>
+        ))}
         {ASKS.map((a) => (
           <AskClaude key={a.key} prompt={priorityPrompt(p, a.key as AskKey)} className="ask-item">{a.label}</AskClaude>
         ))}

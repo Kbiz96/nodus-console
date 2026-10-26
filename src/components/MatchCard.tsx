@@ -4,6 +4,7 @@ import { fmtDate } from "../lib/format.ts";
 import { feedbackLine } from "../lib/feedback.ts";
 import { ExtLink, GateBadge, LineBadge, Score, ScoreBars, StatusBadge } from "./ui.tsx";
 import MatchActions from "./MatchActions.tsx";
+import EnrichDraft from "./EnrichDraft.tsx";
 
 export default function MatchCard({ m, actions = true, onChanged }: { m: MatchCardRow; actions?: boolean; onChanged?: () => void }) {
   const ex = m.explanation ?? {};
@@ -94,6 +95,15 @@ export default function MatchCard({ m, actions = true, onChanged }: { m: MatchCa
       )}
 
       {m.status === "rejected" && m.reject_reason && <p className="muted small">Rejected: {m.reject_reason}</p>}
+      {actions && (m.supply_id || m.need_id) && (
+        <div className="enrich-cta">
+          <EnrichDraft
+            opps={[m.supply_id ? { id: m.supply_id, title: m.supply_title } : null, m.need_id ? { id: m.need_id, title: m.need_title } : null].filter((x): x is { id: string; title: string | null } => Boolean(x))}
+            match={m.id}
+            className="btn"
+          />
+        </div>
+      )}
       {actions && <MatchActions id={m.id} status={m.status} onChanged={onChanged} />}
     </article>
   );

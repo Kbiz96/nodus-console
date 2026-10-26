@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { isUuid } from "../lib/filters.ts";
@@ -7,6 +8,7 @@ import { GATE_HINT, GATE_LABEL, LINE_LABEL, SIDE_HINT, SIDE_LABEL } from "../lib
 import { GATE_ORDER, gateBlocker, gateIndex, nextGate } from "../lib/rules.ts";
 import GateControl from "../components/GateControl.tsx";
 import PeoplePanel from "../components/PeoplePanel.tsx";
+import EnrichDraft from "../components/EnrichDraft.tsx";
 import { Confidence, Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, NotFound, SanctionsBadge, useTitle } from "../components/ui.tsx";
 
 interface Opp {
@@ -104,6 +106,7 @@ async function load(id: string) {
 export default function OpportunityDetail() {
   const { id = "" } = useParams();
   const { data, error, loading, reload } = useLoad(() => load(id), id);
+  const [asked, setAsked] = useState(0);
   useTitle(data?.o.title ?? "Opportunity");
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (loading && !data) return <Loading />;
@@ -127,6 +130,10 @@ export default function OpportunityDetail() {
           <GateBadge gate={o.gate} />
         </div>
         <h1>{o.title}</h1>
+        <div className="enrich-cta">
+          <EnrichDraft opps={[{ id: o.id, title: o.title }]} className="btn primary big" onAsked={() => setAsked((n) => n + 1)} />
+          <p className="muted small">Finds the decision makers (Apollo, work emails only) and drafts first touches for your top priority that fits. Drafts wait in Review; nothing is sent.</p>
+        </div>
         <dl className="facts">
           <div><dt>Where</dt><dd>{[o.region, o.country].filter(Boolean).join(", ") || "—"}</dd></div>
           <div><dt>Timing</dt><dd>{o.timing_from || o.timing_to ? `${fmtDate(o.timing_from)} to ${fmtDate(o.timing_to, "open")}` : "Not stated"}</dd></div>
@@ -201,7 +208,7 @@ export default function OpportunityDetail() {
         )}
       </section>
 
-      <PeoplePanel oppId={o.id} heading="Decision makers" />
+      <PeoplePanel oppId={o.id} heading="Decision makers" refreshKey={asked} />
 
       <section className="stack">
         <h2>Evidence ({signals.length})</h2>

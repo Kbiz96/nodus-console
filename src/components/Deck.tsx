@@ -5,6 +5,7 @@ import { useLoad } from "../lib/useLoad.ts";
 import { copyNow, outreachChanged, outreachDecide, outreachMarkSent } from "../lib/data.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, nextSendSlot, priorityPrompt } from "../lib/focus.ts";
 import { OUTREACH_KIND_LABEL } from "../lib/crm.ts";
+import { withoutParked } from "../lib/mandates.ts";
 import { fmtNumber, safeHref } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { Outreach, Priority } from "../lib/types.ts";
@@ -19,7 +20,8 @@ interface Person { id: string; title: string | null; linkedin: string | null }
 async function load(priorityId: string | null) {
   let q = supabase.from("outreach").select(OUTREACH_COLS).in("status", [...DECK_STATUSES]).order("created_at", { ascending: true }).limit(300);
   if (priorityId) q = q.eq("priority_id", priorityId);
-  let rows = must(await q) as unknown as Outreach[];
+  // Parked drafts never reach the deck (the status filter already leaves them out; this keeps it so).
+  let rows = withoutParked(must(await q) as unknown as Outreach[]);
   if (priorityId) rows = rows.filter((r) => r.priority_id === priorityId);
   const ids = [...new Set(rows.map((r) => r.contact_id).filter(Boolean))] as string[];
   const people = new Map<string, Person>();

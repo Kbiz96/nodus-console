@@ -9,6 +9,7 @@ import { buildGraph, clip, curve, linkStyle, type GNode } from "../lib/graph.ts"
 import { LINES, LINE_LABEL, lineColour } from "../lib/labels.ts";
 import type { MatchCardRow } from "../lib/types.ts";
 import MatchActions from "../components/MatchActions.tsx";
+import EnrichDraft from "../components/EnrichDraft.tsx";
 import { Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, PageHead, ScoreBars, StatusBadge, Swatch, useTitle } from "../components/ui.tsx";
 
 const LOAD_CAP = 400;
@@ -403,6 +404,14 @@ function Breakdown({ m, onChanged, onClose }: { m: MatchCardRow; onChanged: () =
         </details>
       )}
       {m.status === "rejected" && m.reject_reason && <p className="muted small">Rejected: {m.reject_reason}</p>}
+      <div className="enrich-cta">
+        <EnrichDraft
+          opps={[m.supply_id ? { id: m.supply_id, title: m.supply_title } : null, m.need_id ? { id: m.need_id, title: m.need_title } : null].filter((x): x is { id: string; title: string | null } => Boolean(x))}
+          match={m.id}
+          className="btn primary"
+        />
+        <span className="muted small">Decision makers on both sides, then drafts for your approval.</span>
+      </div>
       <MatchActions key={m.id} id={m.id} status={m.status} onChanged={onChanged} />
     </article>
   );

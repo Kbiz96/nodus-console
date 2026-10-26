@@ -2,12 +2,14 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
-import { prioritiesLoad } from "../lib/data.ts";
+import { prioritiesLoad, priorityDeals } from "../lib/data.ts";
 import { activeInOrder, greeting, replyPrompt, ukLongDate } from "../lib/focus.ts";
+import { groupPriorities, splitVisible, withoutParked } from "../lib/mandates.ts";
 import { fmtDate, fmtNumber } from "../lib/format.ts";
 import type { Outreach, Priority, PriorityProgress } from "../lib/types.ts";
 import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { AddPriority, AskClaude, PriorityCard } from "../components/PriorityCard.tsx";
+import { MandateCard } from "../components/MandateCard.tsx";
 import Deck from "../components/Deck.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
@@ -35,15 +37,15 @@ export default function Focus() {
       <div className="focus-grid">
         <section className="focus-col" aria-labelledby="h-priorities">
           <div className="focus-sec">
-            <h2 id="h-priorities">Your priorities</h2>
-            <Link to="/priorities" className="small">All priorities</Link>
+            <h2 id="h-priorities">Signed mandates</h2>
+            <Link to="/priorities" className="small">Edit priorities</Link>
           </div>
           {error && !data ? (
             <ErrorBox error={error} onRetry={reload} />
           ) : loading && !data ? (
-            <Loading what="Getting your priorities…" />
+            <Loading what="Getting your mandates…" />
           ) : (
-            <PriorityList priorities={priorities} progress={data?.progress ?? new Map()} onChanged={reload} />
+            <SignedMandates priorities={priorities} progress={data?.progress ?? new Map()} onChanged={reload} />
           )}
         </section>
 
@@ -56,6 +58,41 @@ export default function Focus() {
           <Replies priorities={priorities} />
         </section>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The signed mandates: one card per mandate (priorities on the same deal share a card), the top three
+ * priorities on screen and the rest one tap away. Each card shows the paperwork, the deal's next step and the
+ * best people in Kuran's own network for it.
+ */
+function SignedMandates({ priorities, progress, onChanged }: {
+  priorities: Priority[];
+  progress: Map<string, PriorityProgress>;
+  onChanged: () => void;
+}) {
+  const [more, setMore] = useState(false);
+  const active = activeInOrder(priorities);
+  const ids = [...new Set(active.flatMap((p) => p.deal_ids ?? []))].sort();
+  const { data: deals } = useLoad(() => priorityDeals(ids), `deals-${ids.join(",")}`);
+  const dealMap = deals ?? new Map();
+  const groups = groupPriorities(active, (id) => dealMap.get(id)?.deal ?? null);
+  const { shown, hidden } = splitVisible(groups, SHOW_FIRST);
+  const list = more ? groups : shown;
+  const nextRank = Math.max(0, ...priorities.map((p) => p.rank)) + 1;
+  return (
+    <div className="plist">
+      {active.length === 0 && <p className="empty">No live mandates. Add the one thing you most want to close this week.</p>}
+      {list.map((g) => (
+        <MandateCard key={g.key} g={g} deals={dealMap} progress={progress} all={active} onChanged={onChanged} />
+      ))}
+      {!more && hidden.length > 0 && (
+        <button type="button" className="padd" onClick={() => setMore(true)}>
+          Show {hidden.length === 1 ? hidden[0].name : `${hidden.length} more`}
+        </button>
+      )}
+      {(more || hidden.length === 0) && <AddPriority nextRank={nextRank} onAdded={onChanged} />}
     </div>
   );
 }
@@ -92,9 +129,13 @@ async function loadReplies() {
   ) as unknown as Outreach[];
 }
 
+async function loadRepliesClean() {
+  return withoutParked(await loadReplies());
+}
+
 /** Replies received: collapsed by default, each with one button that gets Claude to draft the answer. */
 function Replies({ priorities }: { priorities: Priority[] }) {
-  const { data } = useLoad(loadReplies, "replies");
+  const { data } = useLoad(loadRepliesClean, "replies");
   const rows = data ?? [];
   const rank = new Map(priorities.map((p) => [p.id, p.rank]));
   return (
