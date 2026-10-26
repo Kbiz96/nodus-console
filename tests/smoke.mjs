@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { focusData, synthetic } from "./fixtures/synthetic.mjs";
+import { focusData, networkFor, synthetic } from "./fixtures/synthetic.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
@@ -84,6 +84,7 @@ function fake(approved, data = fx) {
       }
       if (name === "enrich_approve") return json(204);
       if (name === "outreach_decide") return json(204);
+      if (name === "priority_network") return json(200, networkFor(body.p_priority, body.p_limit ?? 15));
       if (name === "crm_import") return json(200, { contacts: 1, deals: 1, actions: 0, outreach: 2, mandates: 1 });
       if (name === "person_crm_mark") {
         return json(200, { name: "Jane Smith", role: "Head of Disposals", organisation: "Ealing Power Holdings Limited", email: "jane.smith@example.com", email_status: "verified", phone: "+44 20 7946 0000", linkedin: "https://www.linkedin.com/in/janesmith-example", source: "apollo", retrieved_at: "2026-10-14T06:00:00Z", lawful_basis: "Legitimate interests (B2B)", opportunity: "NOD-11111111" });
@@ -96,6 +97,7 @@ function fake(approved, data = fx) {
     let rows = data.tables[table] ?? [];
     const idEq = u.searchParams.get("id");
     if (idEq?.startsWith("eq.")) rows = rows.filter((r) => r.id === idEq.slice(3));
+    if (idEq?.startsWith("in.(")) { const set = idEq.slice(4, -1).split(",").map((x) => x.replace(/"/g, "")); rows = rows.filter((r) => set.includes(r.id)); }
     const lineEq = u.searchParams.get("line");
     if (lineEq?.startsWith("eq.")) rows = rows.filter((r) => r.line === lineEq.slice(3));
     const statusEq = u.searchParams.get("status");
@@ -146,18 +148,35 @@ async function focusFlow(browser, label, viewport) {
 
   // Focus
   await page.goto(base);
-  await page.getByRole("heading", { name: "Your priorities" }).waitFor();
+  await page.getByRole("heading", { name: "Signed mandates" }).waitFor();
   check(/^Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".focus-head h1").textContent()) ?? ""), at("Focus greets Kuran"));
   check(await page.getByText("Here’s what moves money today.").isVisible(), at("Focus says what it is for"));
-  await page.locator(".pcard").first().waitFor();
-  check(await page.locator(".pcard").count() === 3, at("Focus shows the top three priorities"));
-  check(await page.locator(".pcard-rank").first().textContent() === "1", at("priorities are in rank order"));
+  await page.locator(".mcard").first().waitFor();
+  const card1 = page.locator(".mcard").first();
+  check(await page.locator(".mcard").count() === 2, at("Focus shows the top three priorities as two mandate cards (Al-Risha shares one)"));
+  check(await page.locator(".mcard-rank").first().textContent() === "1", at("mandates are in rank order"));
+  check(await card1.getByRole("tab").count() === 2 && (await card1.getByRole("tab").allTextContents()).join("|").includes("Offtakers") && (await card1.getByRole("tab").allTextContents()).join("|").includes("Investors"), at("Al-Risha reads as one mandate with two workstreams"));
+  await card1.locator(".seal").waitFor();
+  check(await card1.locator(".seal").textContent() === "Signed" && (await card1.locator(".mchips").textContent())?.includes("Fee protected ✓"), at("signed badge and fee chip come from the linked deal"));
+  await card1.locator(".net-row").first().waitFor();
+  check(await card1.locator(".net-row").count() === 5, at("Best in your network shows the top five"));
+  check(rpcCalls.some((c) => c.name === "priority_network" && c.body.p_priority === P1), at("network comes from priority_network"));
+  const draftHref = (await card1.locator(".net-row").first().getByRole("link", { name: "Draft for me" }).getAttribute("href")) ?? "";
+  const dq = new URL(draftHref).searchParams.get("q") ?? "";
+  check(dq === "Nodus command: draft a first message to Leila Nasser (Head of Capacity, Desert Peak Cloud) for priority 1: Al-Risha phase 1: find the offtaker. Use their CRM record and the nodus-command playbook; put it in my console for approval.", at("Draft for me opens Claude with the person and the priority"));
+  check(await card1.locator(".net-row").first().getByRole("link", { name: "Contact" }).getAttribute("href") === "#/contacts?id=cccccccc-7777-4000-8000-000000000065", at("Contact opens the contact page"));
+  await card1.getByRole("button", { name: "See all 7" }).click();
+  check(await card1.locator(".net-row").count() === 7, at("See all expands the network list"));
+  await card1.getByRole("tab", { name: /Investors/ }).click();
+  await card1.locator(".net-row").first().waitFor();
+  check((await card1.locator(".net-row").first().locator(".net-name").textContent()) === "Omar Haddad" && (await card1.locator(".mcard-rank").textContent()) === "2", at("the Investors tab shows priority 2 and its own network"));
+  await card1.getByRole("tab", { name: /Offtakers/ }).click();
   await page.getByRole("button", { name: "Show 2 more" }).click();
-  check(await page.locator(".pcard").count() === 5, at("Show 2 more reveals the rest"));
+  check(await page.locator(".mcard").count() === 4, at("Show 2 more reveals the rest"));
   check(await page.evaluate(() => document.documentElement.dataset.calm) === "on", at("calm mode is on by default on Focus"));
   check(await page.locator(".strip-cell", { hasText: "Sources live" }).count() === 0, at("calm mode hides the strip counters"));
 
-  const ask = page.locator(".pcard").first().getByRole("link", { name: "Ask Claude" });
+  const ask = card1.getByRole("link", { name: "Ask Claude", exact: true });
   const href = (await ask.getAttribute("href")) ?? "";
   const q = new URL(href).searchParams.get("q") ?? "";
   check(href.startsWith("https://claude.ai/new?q=") && q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker): Reach 25 neoclouds") && q.endsWith("tag drafts with priority 1."), at("Ask Claude opens claude.ai with the ready instruction"));
@@ -166,10 +185,10 @@ async function focusFlow(browser, label, viewport) {
   await (await popup).close().catch(() => undefined);
   await page.getByText("Copied — paste into your Nodus chat if it didn't fill").waitFor();
   check(await page.evaluate(() => navigator.clipboard.readText()) === q, at("Ask Claude copies the same instruction"));
-  await page.locator(".pcard").first().locator(".ask-menu summary").click();
-  check(await page.locator(".pcard").first().getByRole("link", { name: "What's blocking this?" }).isVisible(), at("preset asks are offered"));
-  await page.locator(".pcard").first().locator(".ask-menu summary").click();
-  check(await page.locator(".pcard").first().getByRole("link", { name: "Review 1 draft" }).getAttribute("href") === `#/review?priority=${P1}`, at("Review drafts jumps to that priority's drafts"));
+  await card1.locator(".ask-menu summary").click();
+  check(await card1.getByRole("link", { name: "What's blocking this?" }).isVisible(), at("preset asks are offered"));
+  await card1.locator(".ask-menu summary").click();
+  check(await card1.getByRole("link", { name: "Review 1 draft" }).getAttribute("href") === `#/review?priority=${P1}`, at("Review drafts jumps to that priority's drafts"));
 
   // Do now: one at a time, priority 1 first
   check(/1\s*of\s*2/.test(await page.locator(".deck-count").textContent() ?? ""), at("Do now shows 1 of 2"));
@@ -288,7 +307,7 @@ try {
   await page.getByLabel("Password").fill("right-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await page.getByRole("heading", { name: "Your priorities" }).waitFor();
+  await page.getByRole("heading", { name: "Signed mandates" }).waitFor();
   check(true, "signing in opens Focus");
   await page.goto(`${base}#/today`);
   await page.getByRole("heading", { name: "Today" }).waitFor();
@@ -514,7 +533,7 @@ try {
       v_match_cards: [...fx.tables.v_match_cards, ...syn.matches],
       matches: syn.matches.map((m) => ({ id: m.id, status: m.status, total_score: m.total_score, supply_opportunity_id: m.supply_id, need_opportunity_id: m.need_id })),
       mandates: [...fx.tables.mandates, ...syn.mandates],
-      deals: [...fx.tables.deals, ...syn.deals],
+      deals: [...fx.tables.deals, ...syn.deals, ...fd.deals],
       priorities: fd.priorities,
       priority_progress: fd.progress,
       outreach: fd.outreach,
@@ -534,12 +553,55 @@ try {
     p.on("pageerror", (e) => errs.push(String(e)));
     if (process.env.SMOKE_DEBUG) p.on("console", (m) => m.type() !== "log" && console.log(`  [${name} console ${m.type()}] ${m.text().slice(0, 400)}`));
     await p.goto(base);
-    await p.getByRole("heading", { name: "Your priorities" }).waitFor();
+    await p.getByRole("heading", { name: "Signed mandates" }).waitFor();
     await p.locator(".deck-card").waitFor();
+    await p.locator(".net-row").first().waitFor();
     await p.waitForTimeout(500);
     await p.screenshot({ path: path.join(focusShots, `focus-${name}.png`) });
     await p.screenshot({ path: path.join(focusShots, `focus-${name}-full.png`), fullPage: true });
-    check(/1\s*of\s*17/.test(await p.locator(".deck-count").textContent() ?? ""), `Do now counts 17 drafts (${name})`);
+    check(/1\s*of\s*17/.test(await p.locator(".deck-count").textContent() ?? ""), `Do now counts 17 drafts and leaves the parked ones out (${name})`);
+    check(await p.locator(".mcard").count() === 2, `the top three priorities fill two mandate cards (${name})`);
+    const sup = p.locator(".mcard").nth(1);
+    check((await sup.locator(".net h4").textContent()) === "Suppliers and integrators in your network", `the supplier mandate labels its network list (${name})`);
+    check((await sup.locator(".seal").textContent()) === "Not signed yet" && (await sup.locator(".mchips").textContent())?.includes("Fee letter outstanding"), `an unsigned deal says what is outstanding (${name})`);
+    const quotes = new URL((await sup.getByRole("link", { name: "Ask Claude: get quotes" }).getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
+    check(quotes === "Nodus command (priority 3: Basalt): prepare an anonymised RFQ for the 100 MW BOM (no Basalt name or project details) to the best 5 integrators/suppliers in my network and new ones; draft for my approval.", `Ask Claude: get quotes has the RFQ instruction (${name})`);
+    await p.getByRole("button", { name: "Show SE Wisconsin brownfield site (Project A)" }).click();
+    await p.locator(".mcard").nth(2).locator(".mdeal.overdue").waitFor();
+    check(true, `the fourth mandate is one tap away and its overdue deal step shows in amber (${name})`);
+    await p.locator(".mcard").nth(2).screenshot({ path: path.join(focusShots, `focus-${name}-fourth.png`) });
+    if (name === "phone") {
+      await p.locator(".mcard").first().screenshot({ path: path.join(focusShots, "focus-phone-card1.png") });
+      await sup.screenshot({ path: path.join(focusShots, "focus-phone-card2.png") });
+    }
+    // Outreach: parked drafts stay collapsed and read-only, with Bring back
+    await p.goto(`${base}#/outreach`);
+    await p.getByRole("heading", { name: "Outreach", exact: true }).waitFor();
+    const parkedSum = p.locator(".parked summary");
+    await parkedSum.waitFor();
+    check(/Parked \(3\)/.test(await parkedSum.textContent() ?? ""), `Outreach offers a collapsed Parked (3) list (${name})`);
+    check(await p.locator(".tabs a", { hasText: "To approve" }).textContent().then((t) => /\(16\)/.test(t ?? "")), `the To approve count leaves parked out (${name})`);
+    await parkedSum.click();
+    await p.locator(".parked-list li").first().waitFor();
+    await p.waitForTimeout(300);
+    await p.locator(".parked").screenshot({ path: path.join(focusShots, `outreach-parked-${name}.png`) });
+    const wb = writes.length;
+    await p.locator(".parked-list li").first().getByRole("button", { name: "Bring back" }).click();
+    await p.getByText(/Brought back Olivia Grant/).waitFor();
+    check(writes.slice(wb).some((w) => w.table === "outreach" && w.method === "PATCH" && w.body.status === "draft" && /status=eq\.parked/.test(w.url)), `Bring back sets a parked draft to draft (${name})`);
+    // Opportunity: Enrich & draft
+    await p.goto(`${base}#/opportunities/11111111-1111-4111-8111-111111111111`);
+    const enr = p.getByRole("link", { name: "Enrich & draft" });
+    await enr.waitFor();
+    const eq = new URL((await enr.getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
+    check(/^Nodus command: enrich opportunity NOD-11111111 \(.+\) with decision makers \(Apollo, work emails only\) and draft first touches tied to my top priority that fits; put drafts in my console\.$/.test(eq), `Enrich & draft has the enrich instruction (${name})`);
+    const rb = rpcCalls.length;
+    const pop = p.waitForEvent("popup");
+    await enr.click();
+    await (await pop).close().catch(() => undefined);
+    await p.getByText(/Marked for enrichment/).waitFor();
+    check(rpcCalls.slice(rb).some((c) => c.name === "enrich_request" && c.body.p_opp === "11111111-1111-4111-8111-111111111111"), `Enrich & draft marks it through enrich_request (${name})`);
+    if (name === "desktop") await p.screenshot({ path: path.join(focusShots, "opportunity-enrich-desktop.png") });
     check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Focus has no sideways scrolling with full data (${name})`);
     await p.goto(`${base}#/review`);
     await p.locator(".deck-card").waitFor();

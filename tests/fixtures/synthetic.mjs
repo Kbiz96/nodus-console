@@ -130,19 +130,27 @@ const PEOPLE = [
 
 export function focusData(now = Date.now()) {
   const pid = (n) => `abababab-0000-4000-8000-00000000000${n}`;
+  const D = { ar: "dddddddd-5555-4000-8000-000000000001", ba: "dddddddd-5555-4000-8000-000000000002", wi: "dddddddd-5555-4000-8000-000000000003" };
   const P = [
-    [1, "Al-Risha phase 1: find the offtaker", "Signed LOI from an offtaker for phase 1 (50 MW)", "Neoclouds and AI labs needing 50 MW+ in the Middle East", "Reach 25 neoclouds with the anonymised Al-Risha teaser", "powered_land"],
-    [2, "Mindstream ~$100m convertible note", "Term sheet from a lead investor", "Infrastructure funds and family offices writing $25m+ tickets", "Send the teaser to the 10 strongest investor mandates", "capital"],
-    [3, "SE Wisconsin brownfield site (Project A)", "NCNDA signed with a developer or hyperscaler", "US developers looking for powered land in the Midwest", "Shortlist 15 Midwest developers and draft first touches", "powered_land"],
-    [4, "New data-centre offtakers", "Three qualified offtaker conversations this month", "Hyperscalers, neoclouds and enterprise AI buyers", "Draft first touches to 20 offtakers", null],
-    [5, "Optio: find borrowers", "Two borrowers in diligence", "GPU operators needing asset-backed finance", "Find 25 GPU operators raising debt", "compute"],
+    [1, "Al-Risha phase 1: find the offtaker", "Signed LOI from an offtaker for phase 1 (50 MW)", "Neoclouds and AI labs needing 50 MW+ in the Middle East", "Draft anonymised teasers to 25 offtakers; you approve", "powered_land", ["Compute-Buy"], [D.ar]],
+    [2, "Al-Risha phase 1: ~$100m convertible investors", "Term sheet from a lead investor", "Infrastructure funds and family offices writing $25m+ tickets", "Send the capital soundings waiting in Review", "capital", ["Capital-Provide"], [D.ar]],
+    [3, "Basalt 100 MW: equipment quotes and suppliers", "Three firm quotes against the BOM", "Server integrators and GPU distributors in Europe", "Await the client's answers to the 6 questions; then an anonymised RFQ to 5 integrators", "compute", ["Compute-Sell"], [D.ba]],
+    [4, "SE Wisconsin brownfield site (Project A)", "NCNDA signed with a developer or hyperscaler", "US developers looking for powered land in the Midwest", "Match to US site buyers and development-equity investors; draft 15 approaches", "powered_land", ["Capital-Provide", "Land-Buy"], [D.wi]],
+    [5, "Optio: find borrowers", "Two borrowers in diligence", "GPU operators needing asset-backed finance", "Find 25 GPU operators raising debt", "compute", ["Capital-Raise"], []],
   ];
-  const priorities = P.map(([rank, title, goal, who, next_action, line]) => ({
-    id: pid(rank), rank, title, goal, who, next_action, line, mandate_ids: [], deal_ids: [], status: "active", notes: null,
+  const priorities = P.map(([rank, title, goal, who, next_action, line, target_lines, deal_ids]) => ({
+    id: pid(rank), rank, title, goal, who, next_action, line, mandate_ids: [], deal_ids, status: rank === 5 ? "paused" : "active", notes: null,
+    target_lines, keywords: [], region_pattern: null,
     created_at: "2026-10-23T08:00:00Z", updated_at: "2026-10-23T08:00:00Z",
   }));
-  priorities.push({ id: pid(9), rank: 9, title: "UK gas genset bridge power", goal: null, who: null, next_action: null, line: "critical_power", mandate_ids: [], deal_ids: [], status: "paused", notes: null, created_at: "2026-10-10T08:00:00Z", updated_at: "2026-10-20T08:00:00Z" });
-  const tagOf = [1, 1, 1, 1, 1, 2, 2, 2, 3, 3, 4, 5, 5, null, null, 1, 4];
+  priorities.push({ id: pid(9), rank: 9, title: "UK gas genset bridge power", goal: null, who: null, next_action: null, line: "critical_power", mandate_ids: [], deal_ids: [], status: "paused", notes: null, target_lines: [], keywords: [], region_pattern: null, created_at: "2026-10-10T08:00:00Z", updated_at: "2026-10-20T08:00:00Z" });
+  const day = (n) => new Date(now + n * 864e5).toISOString().slice(0, 10);
+  const deals = [
+    { id: D.ar, deal: "Al-Risha phase 1: capital and offtake introductions", contact_id: null, counterparty: "Campus developer", line: "Capital", heat: "Hot", rank: 1, stage: "Qualified", principal_verified: "Yes", ncnda_signed: "Yes", fee_signed: "Yes", kyc_done: "No", proof_done: "No", next_date: day(4), next_step: "Investor notices to the developer for approval (first wave); capital soundings going out without names; chase the offtake information they promised.", value: null, terms: null, notes: null, updated_at: "2026-10-26T09:00:00Z" },
+    { id: D.ba, deal: "Basalt joint offering: cooling, power and compute", contact_id: null, counterparty: "Integrator client", line: "Compute", heat: "Warm", rank: 2, stage: "Qualified", principal_verified: "No", ncnda_signed: "No", fee_signed: "No", kyc_done: "No", proof_done: "No", next_date: day(3), next_step: "Mutual NDA countersigned and six qualifying questions sent. Await answers; then the anonymised RFQ. Fee agreement before any supplier names.", value: null, terms: null, notes: null, updated_at: "2026-10-26T09:00:00Z" },
+    { id: D.wi, deal: "Project A: introducer partnership and capital ask", contact_id: null, counterparty: "Introducer", line: "Powered land", heat: "Warm", rank: 3, stage: "Active", principal_verified: "No", ncnda_signed: "Yes", fee_signed: "N/A", kyc_done: "No", proof_done: "No", next_date: day(-6), next_step: "Answer the introducer: he asks for allocator and developer names. No fee protection yet, so no names.", value: null, terms: null, notes: null, updated_at: "2026-10-20T09:00:00Z" },
+  ];
+  const tagOf = [1, 1, 1, 1, 1, 2, 2, 2, 4, 4, 3, 5, 5, null, null, 1, 3];
   const contacts = [];
   const drafts = PEOPLE.map(([name, title, company], i) => {
     const id = `eeeeeeee-2222-4000-8000-${hex(i + 1, 12)}`;
@@ -156,8 +164,10 @@ export function focusData(now = Date.now()) {
       ? ["Phase 1 capacity in Jordan", `Hello ${first},\n\nWe're working with a 50 MW campus in Jordan with phase 1 power secured and land in hand. Given ${company}'s growth in the region, would a short call next week be useful to see whether it fits your 2027 capacity plan?\n\nI can share an anonymised teaser first.\n\nBest,\nKuran`, `${company} is expanding GPU capacity in the Gulf; matched to priority 1 by the router.`]
       : tag === 2
         ? ["A convertible note in AI infrastructure", `Hello ${first},\n\nWe're introducing a convertible note backing a powered data-centre platform with secured land and power. It sits squarely in the ticket size and themes ${company} has backed before.\n\nWould you like the one-page summary?\n\nBest,\nKuran`, `Investor mandate: infrastructure, $25m+ tickets.`]
-        : tag === 3
+        : tag === 4
           ? ["Brownfield site in SE Wisconsin", `Hello ${first},\n\nWe have an off-market brownfield site in south-east Wisconsin with a utility conversation under way. If ${company} is still looking for Midwest land, I can share details under NCNDA.\n\nBest,\nKuran`, `${company} filed for two Midwest campuses this year.`]
+          : tag === 3
+            ? ["Request for quote: GPU servers", `Hello ${first},\n\nWe're pricing a 100 MW build for a client and would value a quote from ${company} on GPU servers, networking and memory against a short bill of materials. Lead times matter as much as price.\n\nCould I send the anonymised BOM?\n\nBest,\nKuran`, `${company} integrates NVIDIA servers in Europe.`]
           : tag === 5
             ? ["Asset-backed finance for your GPUs", `Hello ${first},\n\nWe work with a lender providing asset-backed finance against GPU fleets. If ${company} is weighing debt for the next build-out, a short call could save you time.\n\nBest,\nKuran`, `${company} announced a 1,024-card expansion.`]
             : ["Capacity for your next cluster", `Hello ${first},\n\nQuick one: we're seeing powered capacity come free in the Nordics and the Gulf for 2026–27. Is ${company} sourcing for anything in that window?\n\nBest,\nKuran`, null];
@@ -179,6 +189,13 @@ export function focusData(now = Date.now()) {
     body: "…", link: null, sequence_step: 1, status: "replied", note: null, origin: "router", created_at: new Date(now - 6 * 864e5).toISOString(),
     approved_at: null, sent_at: new Date(now - 5 * 864e5).toISOString(), replied_at: new Date(now - d * 864e5).toISOString(), priority_id: tag ? pid(tag) : null,
   }));
+  // Old drafts parked for later: they must never reach the deck, counts or badges.
+  const parked = [0, 1, 2].map((i) => ({
+    id: `eeeeeeee-4444-4000-8000-${hex(i + 1, 12)}`, kind: "email", channel: "email", contact_id: null, to_name: ["Olivia Grant", "Felix Romero", "Aisha Bello"][i],
+    to_email: null, company: ["Cobalt Ridge Capital", "Tern Data Systems", "Harbourline Infra"][i], subject: "An old first touch", body: "Hello, an older draft from September that was never sent.",
+    link: null, sequence_step: 1, status: "parked", note: null, origin: "router", created_at: new Date(now - (30 + i) * 864e5).toISOString(),
+    approved_at: null, sent_at: null, replied_at: null, priority_id: pid(1),
+  }));
   const count = (n, st) => drafts.filter((o) => o.priority_id === pid(n) && o.status === st).length;
   const progress = [1, 2, 3, 4, 5, 9].map((n) => ({
     priority_id: pid(n),
@@ -189,5 +206,53 @@ export function focusData(now = Date.now()) {
     manual: count(n, "manual"),
     last_sent_at: null,
   }));
-  return { priorities, progress, outreach: [...drafts, ...replied], contacts };
+  return { priorities, progress, outreach: [...drafts, ...replied, ...parked], contacts, deals };
+}
+
+// ---------- the best people already in the CRM for a priority (priority_network), all fictional ----------
+const NETWORK = {
+  offtakers: [
+    ["Leila Nasser", "Head of Capacity", "Desert Peak Cloud", "AE", "Replied", ["Line: Compute-Buy", "Mentions: neocloud, GPU", "Region fit", "Warm: Replied"], 98],
+    ["Karim Aziz", "VP Infrastructure", "Sandline Cloud", "SA", "Meeting", ["Line: Compute-Buy", "Mentions: AI cloud", "Region fit", "Warm: Meeting"], 92],
+    ["Maya Okafor", "Head of Infrastructure", "Halcyon AI Cloud", "GB", "Contacted", ["Line: Compute-Buy", "Mentions: inference, GPU", "Contacted in the last 14 days"], 81],
+    ["Yusuf Demir", "Director, Compute", "Bosphorus AI", "TR", "New", ["Line: Compute-Buy", "Mentions: AI lab"], 66],
+    ["Ana Ruiz", "Head of Data Centres", "Altamira Neocloud", "ES", "Nurture", ["Line: Compute-Buy", "Mentions: colocation"], 58],
+    ["Peter Hall", "Capacity Planning Lead", "Kite Inference", "US", "New", ["Line: Compute-Buy", "Mentions: inference"], 54],
+    ["Joon Park", "Head of Compute", "Seabright Labs", "KR", "New", ["Line: Compute-Buy"], 41],
+  ],
+  investors: [
+    ["Omar Haddad", "Managing Director", "Levant Capital Partners", "AE", "Meeting", ["Line: Capital-Provide", "Mentions: infrastructure, data cent", "Region fit", "Warm: Meeting"], 104],
+    ["Sofia Marchetti", "Investment Director", "Lumen Family Office", "CH", "Replied", ["Line: Capital-Provide", "Mentions: family office, AI", "Warm: Replied"], 90],
+    ["Daniel Mercer", "Partner", "Greyfield Infrastructure", "GB", "Contacted", ["Line: Capital-Provide", "Mentions: digital infra", "Contacted in the last 14 days"], 77],
+    ["Noura Al-Sabah", "Principal", "Gulfstream Family Office", "KW", "New", ["Line: Capital-Provide", "Mentions: family office", "Region fit"], 72],
+    ["Henrik Moe", "Head of Real Assets", "Fjell Pension", "NO", "New", ["Line: Capital-Provide", "Mentions: infrastructure"], 55],
+    ["Ravi Menon", "Director", "Saffron Sovereign Partners", "SG", "New", ["Line: Capital-Provide", "Mentions: sovereign"], 49],
+  ],
+  suppliers: [
+    ["Jonas Weber", "Head of Sales, EMEA", "Rheinwerk Systems", "DE", "Replied", ["Line: Compute-Sell", "Mentions: server, NVIDIA", "Region fit", "Warm: Replied"], 104],
+    ["Elise Vermeer", "Account Director", "Polder Compute Integration", "NL", "Meeting", ["Line: Compute-Sell", "Mentions: Supermicro, NVIDIA", "Region fit", "Warm: Meeting"], 96],
+    ["Marc Keller", "Partner Manager", "Alpstack AG", "CH", "Qualified", ["Line: Compute-Sell", "Mentions: GPU, integrator", "Region fit", "Warm: Qualified"], 96],
+    ["Tom Brennan", "Sales Director", "Northgate Servers", "GB", "Contacted", ["Line: Compute-Sell", "Mentions: server, GPU", "Region fit"], 83],
+    ["Clara Hoffmann", "Head of Memory", "Kessel DRAM Trading", "DE", "New", ["Line: Compute-Sell", "Mentions: memory, DRAM", "Region fit"], 70],
+    ["Pierre Laurent", "OEM Manager", "Lumiere Integration", "FR", "New", ["Line: Compute-Sell", "Mentions: OEM"], 61],
+  ],
+  land: [
+    ["James Whitaker", "Head of Development", "Midwest Digital Realty", "US", "Replied", ["Line: Land-Buy", "Mentions: data cent, powered shell", "Region fit", "Warm: Replied"], 95],
+    ["Chris Doyle", "Development Director", "Lakeshore Power Campus", "US", "Contacted", ["Line: Capital-Provide", "Mentions: brownfield, retrofit", "Region fit"], 84],
+    ["Dana Price", "Managing Partner", "Prairie Digital Equity", "US", "New", ["Line: Capital-Provide", "Mentions: digital infra", "Region fit"], 71],
+  ],
+};
+
+/** Rows for priority_network: which list depends on the priority's id (see focusData and fixtures.json). */
+export function networkFor(priorityId, limit = 15) {
+  const n = Number(String(priorityId).slice(-1));
+  const key = n === 1 ? "offtakers" : n === 2 ? "investors" : n === 3 ? "suppliers" : n === 4 ? "land" : null;
+  const rows = key ? NETWORK[key] : [];
+  return rows.slice(0, limit).map(([name, title, company, country, stage, reasons, score], i) => ({
+    contact_id: `cccccccc-7777-4000-8000-${hex(n * 100 + i + 1, 12)}`,
+    name, title, company, country, stage,
+    linkedin: i % 3 === 1 ? null : `https://www.linkedin.com/in/${name.toLowerCase().replace(/[^a-z]+/g, "-")}-example`,
+    email: i % 2 ? null : `${name.split(" ")[0].toLowerCase()}@example.com`,
+    score, reasons, last_touch: i === 1 ? "2026-10-06" : null,
+  }));
 }

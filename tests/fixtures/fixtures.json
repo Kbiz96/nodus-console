@@ -262,7 +262,7 @@
         "confidence": "partial",
         "to_ask": "Minimum ticket?",
         "card": {
-          "ticket": "$20\u201350m",
+          "ticket": "$20–50m",
           "geography": "UK, Nordics"
         }
       }
@@ -532,6 +532,27 @@
         "terms": null,
         "notes": null,
         "updated_at": "2026-10-10T09:00:00Z"
+      },
+      {
+        "id": "dddddddd-1111-4000-8000-0000000000a1",
+        "deal": "Al-Risha phase 1: capital and offtake introductions",
+        "contact_id": null,
+        "counterparty": "Campus developer",
+        "line": "Capital",
+        "heat": "Hot",
+        "rank": 2,
+        "stage": "Qualified",
+        "principal_verified": "Yes",
+        "ncnda_signed": "Yes",
+        "fee_signed": "Yes",
+        "kyc_done": "No",
+        "proof_done": "No",
+        "next_date": "2099-01-15",
+        "next_step": "First-wave investor notices to the developer for approval.",
+        "value": null,
+        "terms": null,
+        "notes": null,
+        "updated_at": "2026-10-26T09:00:00Z"
       }
     ],
     "crm_actions": [
@@ -612,6 +633,27 @@
         "link": null,
         "status": "replied",
         "priority_id": "abababab-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "eeeeeeee-1111-4000-8000-0000000000f1",
+        "kind": "email",
+        "channel": "email",
+        "contact_id": null,
+        "to_name": "Olivia Grant",
+        "to_email": null,
+        "company": "Cobalt Ridge Capital",
+        "subject": "An old first touch",
+        "body": "Hello, an older draft that was never sent.",
+        "link": null,
+        "sequence_step": 1,
+        "status": "parked",
+        "note": null,
+        "origin": "router",
+        "created_at": "2026-09-20T09:00:00Z",
+        "approved_at": null,
+        "sent_at": null,
+        "replied_at": null,
+        "priority_id": "abababab-0000-4000-8000-000000000001"
       }
     ],
     "priorities": [
@@ -624,11 +666,18 @@
         "next_action": "Reach 25 neoclouds with the anonymised teaser",
         "line": "powered_land",
         "mandate_ids": [],
-        "deal_ids": [],
+        "deal_ids": [
+          "dddddddd-1111-4000-8000-0000000000a1"
+        ],
         "status": "active",
         "notes": null,
         "created_at": "2026-10-23T08:00:00Z",
-        "updated_at": "2026-10-23T08:00:00Z"
+        "updated_at": "2026-10-23T08:00:00Z",
+        "target_lines": [
+          "Compute-Buy"
+        ],
+        "keywords": [],
+        "region_pattern": null
       },
       {
         "id": "abababab-0000-4000-8000-000000000002",
@@ -639,11 +688,18 @@
         "next_action": "Send the teaser to the 10 strongest investor mandates",
         "line": "capital",
         "mandate_ids": [],
-        "deal_ids": [],
+        "deal_ids": [
+          "dddddddd-1111-4000-8000-0000000000a1"
+        ],
         "status": "active",
         "notes": null,
         "created_at": "2026-10-23T08:00:00Z",
-        "updated_at": "2026-10-23T08:00:00Z"
+        "updated_at": "2026-10-23T08:00:00Z",
+        "target_lines": [
+          "Capital-Provide"
+        ],
+        "keywords": [],
+        "region_pattern": null
       },
       {
         "id": "abababab-0000-4000-8000-000000000003",
@@ -658,7 +714,13 @@
         "status": "active",
         "notes": null,
         "created_at": "2026-10-23T08:00:00Z",
-        "updated_at": "2026-10-23T08:00:00Z"
+        "updated_at": "2026-10-23T08:00:00Z",
+        "target_lines": [
+          "Capital-Provide",
+          "Land-Buy"
+        ],
+        "keywords": [],
+        "region_pattern": null
       },
       {
         "id": "abababab-0000-4000-8000-000000000004",
@@ -673,7 +735,12 @@
         "status": "active",
         "notes": null,
         "created_at": "2026-10-23T08:00:00Z",
-        "updated_at": "2026-10-23T08:00:00Z"
+        "updated_at": "2026-10-23T08:00:00Z",
+        "target_lines": [
+          "Compute-Buy"
+        ],
+        "keywords": [],
+        "region_pattern": null
       },
       {
         "id": "abababab-0000-4000-8000-000000000005",
@@ -688,7 +755,12 @@
         "status": "active",
         "notes": null,
         "created_at": "2026-10-23T08:00:00Z",
-        "updated_at": "2026-10-23T08:00:00Z"
+        "updated_at": "2026-10-23T08:00:00Z",
+        "target_lines": [
+          "Capital-Raise"
+        ],
+        "keywords": [],
+        "region_pattern": null
       }
     ],
     "priority_progress": [
