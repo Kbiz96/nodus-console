@@ -1,5 +1,5 @@
 import { copyNow, enrichRequest } from "../lib/data.ts";
-import { claudeLink } from "../lib/claude.ts";
+import { claudeLink, withCheckFirst } from "../lib/claude.ts";
 import { enrichPrompt } from "../lib/mandates.ts";
 import { friendlyError } from "../lib/rules.ts";
 import { Icon } from "./Brand.tsx";
@@ -24,7 +24,7 @@ export default function EnrichDraft({ opps, match, className = "btn primary", on
   const prompt = enrichPrompt(real);
   const link = claudeLink(prompt);
   const click = () => {
-    const copied = copyNow(prompt);
+    const copied = copyNow(withCheckFirst(prompt));
     const paste = !link.full && copied ? " The instruction is on your clipboard: paste it into the chat." : "";
     void (match ? enrichRequest({ match }) : enrichRequest({ opp: real[0].id })).then(
       (rs) => {

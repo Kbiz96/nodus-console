@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { copyNow, priorityInsert, prioritySwap, priorityUpdate, type PriorityPatch } from "../lib/data.ts";
 import { ASKS, priorityPrompt, type AskKey } from "../lib/focus.ts";
-import { claudeLink } from "../lib/claude.ts";
+import { claudeLink, withCheckFirst } from "../lib/claude.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { Priority, PriorityProgress } from "../lib/types.ts";
@@ -22,7 +22,7 @@ export function claudeNote(copied: boolean, full: boolean): string {
 /** Copy the instruction (inside the click) and open a new Claude chat in the Nodus project. */
 export function openInClaude(text: string): void {
   const { url, full } = claudeLink(text);
-  const copied = copyNow(text);
+  const copied = copyNow(withCheckFirst(text));
   window.open(url, "_blank", "noopener,noreferrer");
   toast(claudeNote(copied, full), copied || full);
 }
@@ -36,7 +36,7 @@ export function AskClaude({ prompt, className = "btn primary big", children }: {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => toast(claudeNote(copyNow(prompt), full))}
+      onClick={() => toast(claudeNote(copyNow(withCheckFirst(prompt)), full))}
     >
       {children}
     </a>

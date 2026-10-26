@@ -25,3 +25,12 @@ test("Claude links keep under the length limit and fall back to a paste note", (
   assert.equal(claudeLink("&".repeat(2000)).full, true);
   assert.equal(claudeLink("&".repeat(2600)).full, false);
 });
+
+test("every Nodus command carries the check-what's-been-done line, once", async () => {
+  const { withCheckFirst, CHECK_FIRST } = await import("../src/lib/claude.ts");
+  const t = withCheckFirst("Nodus command (priority 1: X). Draft.");
+  assert.ok(t.endsWith(CHECK_FIRST));
+  assert.equal(withCheckFirst(t), t);
+  assert.equal(withCheckFirst("hello"), "hello");
+  assert.ok(decodeURIComponent(claudeUrl("Nodus command: go")).includes("Before doing anything"));
+});
