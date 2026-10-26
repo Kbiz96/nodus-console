@@ -4,6 +4,8 @@ import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
 import type { Deal, NetworkRow, Priority, PriorityProgress, SearchAll } from "./types.ts";
+import { ukToday } from "./crm.ts";
+import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
 
@@ -232,6 +234,46 @@ export async function priorityDeals(ids: string[]): Promise<Map<string, Deal>> {
 export async function priorityNetwork(id: string, limit = 15): Promise<NetworkRow[]> {
   const d = must(await supabase.rpc("priority_network", { p_priority: id, p_limit: limit }));
   return Array.isArray(d) ? (d as NetworkRow[]) : [];
+}
+
+/**
+ * "Not now" people still in force for these priorities (no end date, or an end date of today or later).
+ * If the table cannot be read (for example before it exists), the list simply shows everyone.
+ */
+export async function networkDismissals(priorityIds: string[], today = ukToday()): Promise<Dismissal[]> {
+  if (priorityIds.length === 0) return [];
+  const res = await supabase
+    .from("network_dismissals")
+    .select("id,priority_id,contact_id,reason,until,created_at")
+    .in("priority_id", priorityIds)
+    .or(`until.is.null,until.gte.${today}`)
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (res.error) {
+    console.warn("network_dismissals not readable:", res.error.message);
+    return [];
+  }
+  return (res.data ?? []) as Dismissal[];
+}
+
+/** Hide people from one priority's network list (60 days by default). Saying it again just updates the row. */
+export async function networkDismiss(priorityId: string, contactIds: string[], reason: string | null = null): Promise<void> {
+  const rows = dismissalRows(priorityId, contactIds, reason);
+  if (rows.length === 0) return;
+  must(await supabase.from("network_dismissals").upsert(rows, { onConflict: "priority_id,contact_id" }).select("id"));
+}
+
+/** Bring people back (Undo, or "Bring back" under Dismissed). */
+export async function networkUndismiss(priorityId: string, contactIds: string[]): Promise<void> {
+  if (contactIds.length === 0) return;
+  must(await supabase.from("network_dismissals").delete().eq("priority_id", priorityId).in("contact_id", contactIds).select("id"));
+}
+
+/** Names for the Dismissed list, straight from the CRM. */
+export async function contactNames(ids: string[]): Promise<Map<string, { name: string | null; title: string | null; company: string | null }>> {
+  if (ids.length === 0) return new Map();
+  const rows = must(await supabase.from("crm_contacts").select("id,name,title,company").in("id", ids)) as { id: string; name: string | null; title: string | null; company: string | null }[] | null;
+  return new Map((rows ?? []).map((r) => [r.id, r]));
 }
 
 export type PriorityPatch = Partial<Pick<Priority, "rank" | "title" | "goal" | "who" | "next_action" | "line" | "status" | "notes">>;

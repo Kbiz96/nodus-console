@@ -16,3 +16,7 @@ export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_owO7VMpQG1o5cFoYzD7FYA_b
 export const ENRICH_MONTHLY_CAP_CREDITS = 300;
 export const ENRICH_PER_RUN_CAP_CREDITS = 25;
 export const ENRICH_CREDITS_PER_OPPORTUNITY_ESTIMATE = 4;
+
+// The Nodus Project on claude.ai. Every "Ask Claude" link opens a new chat inside this project, so the
+// conversation sits with the rest of the Nodus work. Not a secret: it only works for Kuran's own login.
+export const NODUS_PROJECT_ID = "01a0f3c4-b60e-7236-8dea-4bd5402220f3";

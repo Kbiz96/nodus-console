@@ -1,8 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  addDays,
+  batchDraftPrompt,
   dealNext,
-  draftForPrompt,
+  dismissalRows,
+  dismissedIds,
+  isActiveDismissal,
+  withoutDismissed,
   enrichPrompt,
   groupPriorities,
   isParked,
@@ -110,15 +115,44 @@ test("workstream labels and the supplier network heading", () => {
 
 // ---------- prompts ----------
 
-test("Draft for me prompt", () => {
+test("batch draft prompt lists every person with their contact id", () => {
+  const people = [
+    { contact_id: "c1", name: "Leila Nasser", title: "Head of Capacity", company: "Desert Peak Cloud" },
+    { contact_id: "c2", name: "Sam Example", title: null, company: "Example Fund." },
+    { contact_id: "c3", name: null, title: "CTO", company: null },
+  ];
   assert.equal(
-    draftForPrompt({ name: "Jane Example", title: "Head of Capacity", company: "Example Cloud" }, { rank: 1, title: "Al-Risha phase 1 (Mindstream): find the offtaker" }),
-    "Nodus command: draft a first message to Jane Example (Head of Capacity, Example Cloud) for priority 1: Al-Risha phase 1 (Mindstream): find the offtaker. Use their CRM record and the nodus-command playbook; put it in my console for approval.",
+    batchDraftPrompt(people, { rank: 1, title: "Al-Risha phase 1: find the offtaker" }),
+    "Nodus command (priority 1: Al-Risha phase 1: find the offtaker). Draft one first message each, for my approval, to these 3 people from my CRM. " +
+      "Use each person's CRM record (contact_id) and the nodus-command playbook; blind brief only, no client names; tag every draft to this priority and put them in my console Review.\n" +
+      "1. Leila Nasser, Head of Capacity, Desert Peak Cloud (contact_id c1)\n" +
+      "2. Sam Example, Example Fund (contact_id c2)\n" +
+      "3. Unnamed contact, CTO (contact_id c3)",
   );
-  assert.equal(
-    draftForPrompt({ name: "Sam Example", title: null, company: "Example Fund" }, { rank: 2, title: "Investors." }),
-    "Nodus command: draft a first message to Sam Example (Example Fund) for priority 2: Investors. Use their CRM record and the nodus-command playbook; put it in my console for approval.",
-  );
+  assert.match(batchDraftPrompt(people.slice(0, 1), { rank: 2, title: "Investors" }), /^Nodus command \(priority 2: Investors\)\. Draft one first message each, for my approval, to this person from my CRM\./);
+});
+
+test("Not now: dismissal rows, expiry and filtering", () => {
+  assert.equal(addDays("2026-10-26", 60), "2026-12-25");
+  assert.equal(addDays("2026-12-31", 1), "2027-01-01");
+  assert.deepEqual(dismissalRows("p1", ["a", "b", "a"], null, "2026-10-26"), [
+    { priority_id: "p1", contact_id: "a", reason: null, until: "2026-12-25" },
+    { priority_id: "p1", contact_id: "b", reason: null, until: "2026-12-25" },
+  ]);
+  assert.equal(dismissalRows("p1", ["a"], "Not a fit", "2026-10-26")[0].reason, "Not a fit");
+  assert.equal(isActiveDismissal({ until: null }, "2026-10-26"), true);
+  assert.equal(isActiveDismissal({ until: "2026-10-26" }, "2026-10-26"), true);
+  assert.equal(isActiveDismissal({ until: "2026-10-25" }, "2026-10-26"), false);
+  const ds = [
+    { priority_id: "p1", contact_id: "a", until: "2026-12-25" },
+    { priority_id: "p1", contact_id: "b", until: "2026-10-01" }, // expired: back on the list
+    { priority_id: "p2", contact_id: "c", until: null }, // another priority
+  ];
+  assert.deepEqual([...dismissedIds(ds, "p1", "2026-10-26")], ["a"]);
+  const rows = ["a", "b", "c", "d", "e"].map((contact_id) => ({ contact_id }));
+  assert.deepEqual(withoutDismissed(rows, ds, "p1", 15, "2026-10-26").map((r) => r.contact_id), ["b", "c", "d", "e"]);
+  assert.deepEqual(withoutDismissed(rows, ds, "p1", 2, "2026-10-26").map((r) => r.contact_id), ["b", "c"]);
+  assert.deepEqual(withoutDismissed(rows, ds, "p2", 15, "2026-10-26").map((r) => r.contact_id), ["a", "b", "d", "e"]);
 });
 
 test("get quotes prompt for the supplier priority", () => {

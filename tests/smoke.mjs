@@ -13,6 +13,8 @@ const dist = path.resolve(here, "../dist");
 const shots = process.argv[2] || process.env.SHOTS_DIR || path.resolve(here, "../.smoke");
 // Focus, Review and Priorities screenshots can go to their own folder.
 const focusShots = process.env.FOCUS_SHOTS || shots;
+// The batch-draft screenshots (selection bar visible) can go to their own folder too.
+const batchShots = process.env.BATCH_SHOTS || focusShots;
 const fx = JSON.parse(fs.readFileSync(path.join(here, "fixtures/fixtures.json"), "utf8"));
 process.env.PLAYWRIGHT_BROWSERS_PATH ||= "/opt/pw-browsers";
 
@@ -105,6 +107,8 @@ function fake(approved, data = fx) {
     if (statusEq?.startsWith("in.(")) { const set = statusEq.slice(4, -1).split(","); rows = rows.filter((r) => !r.status || set.includes(r.status)); }
     const prioEq = u.searchParams.get("priority_id");
     if (prioEq?.startsWith("eq.")) rows = rows.filter((r) => r.priority_id === prioEq.slice(3));
+    if (prioEq?.startsWith("in.(")) { const set = prioEq.slice(4, -1).split(",").map((x) => x.replace(/"/g, "")); rows = rows.filter((r) => set.includes(r.priority_id)); }
+    if (req.method() === "DELETE") { writes.push({ table, method: "DELETE", url: u.search, body: {} }); return json(200, rows.slice(0, 1)); }
     if (req.method() === "PATCH") { writes.push({ table, method: "PATCH", url: u.search, body: req.postDataJSON?.() ?? {} }); return json(200, rows.slice(0, 1)); }
     if (req.method() === "POST") {
       const body = req.postDataJSON?.() ?? {};
@@ -161,10 +165,81 @@ async function focusFlow(browser, label, viewport) {
   await card1.locator(".net-row").first().waitFor();
   check(await card1.locator(".net-row").count() === 5, at("Best in your network shows the top five"));
   check(rpcCalls.some((c) => c.name === "priority_network" && c.body.p_priority === P1), at("network comes from priority_network"));
-  const draftHref = (await card1.locator(".net-row").first().getByRole("link", { name: "Draft for me" }).getAttribute("href")) ?? "";
-  const dq = new URL(draftHref).searchParams.get("q") ?? "";
-  check(dq === "Nodus command: draft a first message to Leila Nasser (Head of Capacity, Desert Peak Cloud) for priority 1: Al-Risha phase 1: find the offtaker. Use their CRM record and the nodus-command playbook; put it in my console for approval.", at("Draft for me opens Claude with the person and the priority"));
-  check(await card1.locator(".net-row").first().getByRole("link", { name: "Contact" }).getAttribute("href") === "#/contacts?id=cccccccc-7777-4000-8000-000000000065", at("Contact opens the contact page"));
+  check(await card1.getByRole("link", { name: "Draft for me" }).count() === 0, at("there is no per-person Draft for me any more"));
+
+  // Best in your network: tick three people (box, whole row, box), draft them in ONE Claude chat
+  await page.evaluate(() => {
+    const open = window.open.bind(window);
+    window.__opened = [];
+    window.open = (u, ...rest) => (window.__opened.push(String(u)), open(u, ...rest));
+  });
+  check(await card1.locator(".net-batch").count() === 0, at("no batch bar until someone is ticked"));
+  await card1.getByRole("checkbox", { name: "Leila Nasser" }).check();
+  await card1.locator(".net-row", { hasText: "Karim Aziz" }).locator(".net-role").click();
+  await card1.getByRole("checkbox", { name: "Maya Okafor" }).check();
+  const bar = card1.locator(".net-batch");
+  await bar.waitFor();
+  check(await card1.getByRole("checkbox", { name: "Karim Aziz" }).isChecked(), at("tapping anywhere on a row ticks it"));
+  check((await bar.textContent())?.includes("3 selected") && (await bar.textContent())?.includes("Priority 1, offtakers"), at("the batch bar says how many and which priority"));
+  check(await bar.getByRole("button", { name: "Draft for 3 selected" }).isVisible() && await bar.getByRole("button", { name: "Not now for 3" }).isVisible(), at("the batch bar offers Draft for 3 selected and Not now for 3"));
+  const barBox = await bar.boundingBox();
+  check(Boolean(barBox) && barBox.y + barBox.height <= viewport.height + 1, at("the batch bar is on screen"));
+  fs.mkdirSync(batchShots, { recursive: true });
+  await page.screenshot({ path: path.join(batchShots, `batch-${label}.png`) });
+  const pop3 = page.waitForEvent("popup");
+  await bar.getByRole("button", { name: "Draft for 3 selected" }).click();
+  await (await pop3).close().catch(() => undefined);
+  const opened3 = await page.evaluate(() => window.__opened);
+  const bu = new URL(opened3[0] ?? "https://x");
+  const bq = bu.searchParams.get("q") ?? "";
+  check(opened3.length === 1, at("Draft for 3 selected opens exactly one chat"));
+  check(bu.origin + bu.pathname === "https://claude.ai/new" && bu.searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3", at("the chat opens inside the Nodus project"));
+  check(bq.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker). Draft one first message each, for my approval, to these 3 people from my CRM.") &&
+    ["Leila Nasser", "Karim Aziz", "Maya Okafor"].every((n) => bq.includes(n)) &&
+    bq.includes("1. Leila Nasser, Head of Capacity, Desert Peak Cloud (contact_id cccccccc-7777-4000-8000-000000000065)") &&
+    bq.includes("(contact_id cccccccc-7777-4000-8000-000000000066)") && bq.includes("(contact_id cccccccc-7777-4000-8000-000000000067)"), at("one instruction lists all three people with contact ids"));
+  check(await page.evaluate(() => navigator.clipboard.readText()) === bq, at("the batch instruction is also copied"));
+  check(await card1.locator(".net-sent").count() === 3 && await card1.locator(".net-batch").count() === 0, at("the three are marked Sent to Claude and the bar goes"));
+
+  // Selection is per priority and survives switching tabs
+  await card1.getByRole("button", { name: /^Select top/ }).click();
+  check((await card1.locator(".net-batch").textContent())?.includes("2 selected"), at("Select top 5 skips people already sent to Claude"));
+  await card1.getByRole("tab", { name: /Investors/ }).click();
+  await card1.locator(".net-row").first().waitFor();
+  check(await card1.locator(".net-batch").count() === 0 && await card1.locator(".mtab-picked").count() === 1, at("the Investors tab has its own selection; Offtakers shows its picks"));
+  await card1.getByRole("tab", { name: /Offtakers/ }).click();
+  await card1.locator(".net-batch").waitFor();
+  check((await card1.locator(".net-batch").textContent())?.includes("2 selected"), at("picks come back with the tab"));
+  await card1.getByRole("button", { name: "Clear" }).click();
+  check(await card1.locator(".net-batch").count() === 0, at("Clear empties the selection"));
+
+  // Not now on one row, then Undo
+  const wNot = writes.length;
+  await card1.getByRole("button", { name: "Not now: Yusuf Demir" }).click();
+  await page.getByText("Not now: Yusuf Demir. Back in 60 days.").waitFor();
+  const ins = writes.slice(wNot).find((w) => w.table === "network_dismissals" && w.method === "POST");
+  check(Boolean(ins) && /on_conflict=priority_id%2Ccontact_id|on_conflict=priority_id,contact_id/.test(ins.url) && Array.isArray(ins.body) && ins.body[0].priority_id === P1 && ins.body[0].contact_id === "cccccccc-7777-4000-8000-000000000068" && ins.body[0].reason === null && /^\d{4}-\d{2}-\d{2}$/.test(ins.body[0].until), at("Not now upserts a network_dismissals row with a 60-day end"));
+  check(await card1.locator(".net-row", { hasText: "Yusuf Demir" }).count() === 0 && await card1.locator(".net-row").count() === 5, at("the person leaves the list at once and the next one moves up"));
+  if (label === "phone") { await page.waitForTimeout(400); await page.screenshot({ path: path.join(batchShots, "not-now-toast-phone.png") }); }
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await page.getByText("Undone.").waitFor();
+  check(writes.slice(wNot).some((w) => w.table === "network_dismissals" && w.method === "DELETE" && w.url.includes("cccccccc-7777-4000-8000-000000000068")), at("Undo deletes the dismissal"));
+  check(await card1.locator(".net-row", { hasText: "Yusuf Demir" }).count() === 1, at("Undo brings the person straight back"));
+
+  // Not now for the batch, then Bring back from Dismissed
+  await card1.getByRole("checkbox", { name: "Yusuf Demir" }).check();
+  await card1.locator(".net-batch").getByRole("button", { name: "Not now for 1" }).click();
+  await page.getByText("Not now: Yusuf Demir. Back in 60 days.").waitFor();
+  await page.locator(".toast").getByRole("button", { name: "Not a fit" }).click();
+  await page.getByText("Noted: not a fit.").waitFor();
+  check(writes.slice(wNot).some((w) => w.table === "network_dismissals" && w.method === "POST" && w.body[0]?.reason === "Not a fit"), at("a one-tap reason is saved"));
+  await card1.getByRole("button", { name: "Dismissed (1)" }).click();
+  await card1.locator(".net-gone").getByText("Yusuf Demir").waitFor();
+  await card1.getByRole("button", { name: "Bring back Yusuf Demir" }).click();
+  await page.getByText("Brought back Yusuf Demir.").waitFor();
+  check(await card1.locator(".net-row", { hasText: "Yusuf Demir" }).count() === 1 && await card1.getByRole("button", { name: /^Dismissed/ }).count() === 0, at("Bring back puts them back on the list"));
+  check(rpcCalls.some((c) => c.name === "priority_network" && c.body.p_priority === P1 && c.body.p_limit === 20), at("the network asks for 20 rows so the list stays full after filtering"));
+  check(await card1.locator(".net-row").first().getByRole("link", { name: /^Contact/ }).getAttribute("href") === "#/contacts?id=cccccccc-7777-4000-8000-000000000065", at("Contact opens the contact page"));
   await card1.getByRole("button", { name: "See all 7" }).click();
   check(await card1.locator(".net-row").count() === 7, at("See all expands the network list"));
   await card1.getByRole("tab", { name: /Investors/ }).click();
@@ -179,7 +254,7 @@ async function focusFlow(browser, label, viewport) {
   const ask = card1.getByRole("link", { name: "Ask Claude", exact: true });
   const href = (await ask.getAttribute("href")) ?? "";
   const q = new URL(href).searchParams.get("q") ?? "";
-  check(href.startsWith("https://claude.ai/new?q=") && q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker): Reach 25 neoclouds") && q.endsWith("tag drafts with priority 1."), at("Ask Claude opens claude.ai with the ready instruction"));
+  check(href.startsWith("https://claude.ai/new?q=") && new URL(href).searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker): Reach 25 neoclouds") && q.endsWith("tag drafts with priority 1."), at("Ask Claude opens claude.ai with the ready instruction"));
   const popup = page.waitForEvent("popup");
   await ask.click();
   await (await popup).close().catch(() => undefined);
@@ -217,7 +292,7 @@ async function focusFlow(browser, label, viewport) {
   await page.locator(".waiting summary").click();
   const reply = page.getByRole("link", { name: "Draft reply with Claude" });
   const rq = new URL((await reply.getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
-  check(rq.includes("draft a reply to Alex Example at Example Power Ltd") && rq.includes('"Capacity in Jordan"') && rq.includes("priority 1"), at("Waiting on others drafts a reply with Claude"));
+  check(new URL((await reply.getAttribute("href")) ?? "https://x").searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && rq.includes("draft a reply to Alex Example at Example Power Ltd") && rq.includes('"Capacity in Jordan"') && rq.includes("priority 1"), at("Waiting on others drafts a reply with Claude"));
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Focus has no sideways scrolling"));
 
   // Review: skip and edit

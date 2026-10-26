@@ -51,6 +51,8 @@ export const Icon = {
   down: () => <I><path d="M10 4v12M5 11l5 5 5-5" /></I>,
   calm: () => <I><path d="M3 8c2-2 4-2 7 0s5 2 7 0M3 13c2-2 4-2 7 0s5 2 7 0" /></I>,
   claude: () => <I><path d="M10 2.5v4M10 13.5v4M2.5 10h4M13.5 10h4M4.7 4.7l2.8 2.8M12.5 12.5l2.8 2.8M15.3 4.7l-2.8 2.8M7.5 12.5l-2.8 2.8" /></I>,
+  linkedin: () => <I><rect x="3" y="3" width="14" height="14" /><path d="M6.5 9v5M6.5 6.3v.4M9.5 14V9M9.5 11.2c0-1.4.9-2.2 2-2.2s2 .7 2 2.2V14" /></I>,
+  check: () => <I><path d="m4.5 10.5 3.5 3.5 7.5-8" /></I>,
   external: () => <I><path d="M11 3h6v6M17 3l-8 8M14 12v5H3V6h5" /></I>,
 };
 export type IconName = keyof typeof Icon;

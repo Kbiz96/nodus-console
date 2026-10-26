@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { activeInOrder, claudeUrl, deckOrder, greeting, isLinkedIn, nextSendSlot, priorityPrompt, replyPrompt, ukLongDate } from "../src/lib/focus.ts";
+import { activeInOrder, deckOrder, greeting, isLinkedIn, nextSendSlot, priorityPrompt, replyPrompt, ukLongDate } from "../src/lib/focus.ts";
 import { DEFAULT_LINES, linesParam, parseLines } from "../src/lib/labels.ts";
 
 test("next send slot: the next weekday slot after now, in UK time", () => {
@@ -85,12 +85,6 @@ test("reply prompt names the contact and the thread", () => {
     'Nodus command: draft a reply to Jane Smith at Example Cloud. The thread is "Re: 50 MW in Jordan". They replied on 22 Oct 2026. Follow the nodus-command playbook: read the thread in Gmail and check the CRM, draft the reply for my approval, tag it with priority 1. Do not send anything.',
   );
   assert.match(replyPrompt({ to_name: null, company: null, subject: null, replied_at: null }), /^Nodus command: draft a reply to this contact\. Follow/);
-});
-
-test("Claude link carries the prompt, encoded", () => {
-  const url = claudeUrl("a & b: 50% (priority 1)?");
-  assert.equal(url, "https://claude.ai/new?q=a%20%26%20b%3A%2050%25%20(priority%201)%3F");
-  assert.equal(new URL(url).searchParams.get("q"), "a & b: 50% (priority 1)?");
 });
 
 test("greeting and date in UK time", () => {

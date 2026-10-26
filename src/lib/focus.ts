@@ -137,11 +137,6 @@ export function replyPrompt(o: Pick<Outreach, "to_name" | "company" | "subject" 
   return `Nodus command: draft a reply to ${who}.${thread}${when} Follow the nodus-command playbook: read the thread in Gmail and check the CRM, draft the reply for my approval${tag}. Do not send anything.`;
 }
 
-/** Opens a new Claude chat with the text already typed in. */
-export function claudeUrl(prompt: string): string {
-  return `https://claude.ai/new?q=${encodeURIComponent(prompt)}`;
-}
-
 // ---------- header ----------
 
 const ukHour = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", hour: "numeric", hourCycle: "h23" });

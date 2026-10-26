@@ -160,11 +160,77 @@ function clean(s: string | null | undefined): string {
   return (s ?? "").replace(/\s+/g, " ").trim().replace(/[.\s]+$/, "");
 }
 
-/** "Draft for me": the instruction for Claude to write a first message to one person in the network. */
-export function draftForPrompt(person: Pick<NetworkRow, "name" | "title" | "company">, p: Pick<Priority, "rank" | "title">): string {
-  const role = [clean(person.title), clean(person.company)].filter(Boolean).join(", ");
-  const who = `${clean(person.name) || "this contact"}${role ? ` (${role})` : ""}`;
-  return `Nodus command: draft a first message to ${who} for priority ${p.rank}: ${clean(p.title)}. Use their CRM record and the nodus-command playbook; put it in my console for approval.`;
+/** One person picked from the network list for a batch draft. */
+export type BatchPerson = Pick<NetworkRow, "contact_id" | "name" | "title" | "company">;
+
+/**
+ * "Draft for N selected": one instruction for one Claude chat, listing every picked person with their contact id,
+ * so Claude drafts them all in one go against the same priority.
+ */
+export function batchDraftPrompt(people: BatchPerson[], p: Pick<Priority, "rank" | "title">): string {
+  const n = people.length;
+  const whom = n === 1 ? "this person" : `these ${n} people`;
+  const head =
+    `Nodus command (priority ${p.rank}: ${clean(p.title)}). Draft one first message each, for my approval, to ${whom} from my CRM. ` +
+    "Use each person's CRM record (contact_id) and the nodus-command playbook; blind brief only, no client names; " +
+    "tag every draft to this priority and put them in my console Review.";
+  const lines = people.map((x, i) => {
+    const parts = [clean(x.name) || "Unnamed contact", clean(x.title), clean(x.company)].filter(Boolean).join(", ");
+    return `${i + 1}. ${parts} (contact_id ${x.contact_id})`;
+  });
+  return [head, ...lines].join("\n");
+}
+
+// ---------- "Not now" (network_dismissals) ----------
+
+export interface Dismissal {
+  id?: string;
+  priority_id: string;
+  contact_id: string;
+  reason: string | null;
+  /** UK date the person comes back, "YYYY-MM-DD"; null means until brought back by hand. */
+  until: string | null;
+  created_at?: string;
+}
+
+/** How long "Not now" hides someone by default. */
+export const DISMISS_DAYS = 60;
+
+/** One-tap reasons offered after "Not now". No reason is the default. */
+export const DISMISS_REASONS = ["Not a fit", "Already talking", "Later"] as const;
+
+/** "YYYY-MM-DD" plus `days` (calendar arithmetic, no time zones). */
+export function addDays(day: string, days: number): string {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
+}
+
+/** Still in force today: no end date, or an end date of today or later. */
+export function isActiveDismissal(d: Pick<Dismissal, "until">, today = ukToday()): boolean {
+  return !d.until || d.until.slice(0, 10) >= today;
+}
+
+/** The people in force as dismissed for one priority (contact ids). */
+export function dismissedIds(ds: Pick<Dismissal, "priority_id" | "contact_id" | "until">[], priorityId: string, today = ukToday()): Set<string> {
+  return new Set(ds.filter((d) => d.priority_id === priorityId && isActiveDismissal(d, today)).map((d) => d.contact_id));
+}
+
+/** The network list without anyone dismissed for this priority, capped at `max`. */
+export function withoutDismissed<T extends { contact_id: string }>(
+  rows: T[],
+  ds: Pick<Dismissal, "priority_id" | "contact_id" | "until">[],
+  priorityId: string,
+  max = 15,
+  today = ukToday(),
+): T[] {
+  const gone = dismissedIds(ds, priorityId, today);
+  return rows.filter((r) => !gone.has(r.contact_id)).slice(0, max);
+}
+
+/** Rows to upsert for "Not now": one per person, default 60 days, no reason unless one was picked. */
+export function dismissalRows(priorityId: string, contactIds: string[], reason: string | null = null, today = ukToday(), days = DISMISS_DAYS): Dismissal[] {
+  const until = addDays(today, days);
+  return [...new Set(contactIds)].map((contact_id) => ({ priority_id: priorityId, contact_id, reason, until }));
 }
 
 /**
