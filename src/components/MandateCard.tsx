@@ -1,6 +1,7 @@
-import { useState, type MouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
-import { contactNames, networkDismiss, networkDismissals, networkUndismiss, priorityNetwork } from "../lib/data.ts";
+import { contactNames, leadsDecide, leadsLoad, networkDismiss, networkDismissals, networkUndismiss, priorityNetwork } from "../lib/data.ts";
+import { LEAD_UNDO_MS, decide, leadQueues, newLeadCounts, type Lead, type LeadOverrides, type LeadStatus } from "../lib/leads.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { priorityPrompt } from "../lib/focus.ts";
 import { fmtDay } from "../lib/crm.ts";
@@ -30,6 +31,7 @@ import { AskClaude, AskMenu, PriorityEditor, ProgressStrip, openInClaude } from 
 import { toast } from "./Toast.tsx";
 import { Icon } from "./Brand.tsx";
 import { ErrorBox } from "./ui.tsx";
+import { LeadQueue } from "./LeadQueue.tsx";
 
 const NET_FIRST = 5;
 const NET_MAX = 15;
@@ -38,6 +40,7 @@ const NET_ASK = 20;
 
 /** Picks and "Sent to Claude" marks, kept per priority so switching tabs does not lose them. */
 type PerPriority = Record<string, string[]>;
+type PeopleTab = "leads" | "network";
 
 /**
  * One signed mandate: the paper (from the linked deal), the deal's next step, and one workstream per priority.
@@ -54,7 +57,44 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
   const [tab, setTab] = useState(0);
   const [picked, setPicked] = useState<PerPriority>({});
   const [sent, setSent] = useState<PerPriority>({});
+  const [people, setPeople] = useState<Record<string, PeopleTab>>({});
+  const [leadSent, setLeadSent] = useState<PerPriority>({});
+  const [over, setOver] = useState<LeadOverrides>(new Map());
+  const memberIds = g.members.map((m) => m.id).sort();
+  const leadsQ = useLoad(() => leadsLoad(memberIds), `leads-${memberIds.join(",")}`);
+  const leads = leadsQ.data ?? [];
+  const newCounts = newLeadCounts(leads, over);
+  const totalNew = g.members.reduce((s, m) => s + (newCounts.get(m.id) ?? 0), 0);
   const p = g.members[Math.min(tab, g.members.length - 1)];
+
+  /** Approve, dismiss or put back: on screen at once, then saved; approve and dismiss offer Undo for 6 seconds. */
+  const decideLeads = async (rows: Lead[], status: LeadStatus, quiet = false) => {
+    const ids = rows.map((r) => r.id);
+    if (ids.length === 0) return;
+    const before = new Map(ids.map((id) => [id, over.has(id) ? over.get(id)! : rows.find((r) => r.id === id)!.status] as const));
+    setOver((m) => decide(m, ids, status));
+    try {
+      await leadsDecide(ids, status);
+    } catch (e) {
+      setOver((m) => {
+        const next = new Map(m);
+        for (const [id, st] of before) next.set(id, st);
+        return next;
+      });
+      toast(`That did not save: ${friendlyError(e)}`, false);
+      return;
+    }
+    if (quiet) return;
+    if (status === "new") {
+      toast(`Moved back to new leads: ${whoLabel(rows.map((r) => r.name))}.`);
+      return;
+    }
+    const verb = status === "approved" ? "Approved" : "Dismissed";
+    toast(`${verb} ${rows.length === 1 ? rows[0].name : `${rows.length} leads`}.`, true, {
+      ms: LEAD_UNDO_MS,
+      actions: [{ label: "Undo", primary: true, run: () => void decideLeads(rows.map((r) => ({ ...r, status })), "new", true).then(() => toast("Undone.")) }],
+    });
+  };
   const linked = g.dealIds.map((id) => deals.get(id)).filter((d): d is Deal => Boolean(d));
   const signed = signedState(linked);
   const next = dealNext(linked);
@@ -71,10 +111,11 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
             <h3 id={headId}>{g.name}</h3>
             {signed.badge && <span className={`seal ${signed.state}`}>{signed.badge}</span>}
           </div>
-          {(signed.chips.length > 0 || signed.state === "none") && (
-            <ul className="mchips" aria-label="Paperwork">
+          {(signed.chips.length > 0 || signed.state === "none" || totalNew > 0) && (
+            <ul className="mchips" aria-label="Paperwork and leads">
               {signed.chips.map((c) => <li key={c.label} className={`t-${c.tone}`}>{c.label}</li>)}
               {signed.state === "none" && <li className="t-off">No deal linked</li>}
+              {totalNew > 0 && <li className="t-new">{fmtNumber(totalNew)} new {totalNew === 1 ? "lead" : "leads"}</li>}
             </ul>
           )}
           {next && <DealNextLine text={next.text} date={next.date} overdue={next.overdue} dealId={dealId} />}
@@ -120,6 +161,13 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
         onPick={(ids) => setPicked((x) => ({ ...x, [p.id]: ids }))}
         sent={sent[p.id] ?? []}
         onSent={(ids) => setSent((x) => ({ ...x, [p.id]: [...new Set([...(x[p.id] ?? []), ...ids])] }))}
+        people={people[p.id] ?? "leads"}
+        onPeople={(t) => setPeople((x) => ({ ...x, [p.id]: t }))}
+        leads={leadQueues(leads, p.id, over)}
+        leadsLoading={leadsQ.loading}
+        onDecide={(rows, st) => void decideLeads(rows, st)}
+        leadSent={leadSent[p.id] ?? []}
+        onLeadSent={(ids) => setLeadSent((x) => ({ ...x, [p.id]: [...new Set([...(x[p.id] ?? []), ...ids])] }))}
       />
       </div>
     </article>
@@ -144,7 +192,7 @@ function DealNextLine({ text, date, overdue, dealId }: { text: string; date: str
 }
 
 /** One priority inside a mandate card: progress, the next action, Ask Claude and the people to talk to. */
-function Workstream({ id, labelledBy, p, pr, above, below, showTail, onChanged, picked, onPick, sent, onSent }: {
+function Workstream({ id, labelledBy, p, pr, above, below, showTail, onChanged, picked, onPick, sent, onSent, people, onPeople, leads, leadsLoading, onDecide, leadSent, onLeadSent }: {
   id: string;
   labelledBy: string;
   p: Priority;
@@ -157,8 +205,16 @@ function Workstream({ id, labelledBy, p, pr, above, below, showTail, onChanged, 
   onPick: (ids: string[]) => void;
   sent: string[];
   onSent: (ids: string[]) => void;
+  people: PeopleTab;
+  onPeople: (t: PeopleTab) => void;
+  leads: { fresh: Lead[]; approved: Lead[] };
+  leadsLoading: boolean;
+  onDecide: (rows: Lead[], status: LeadStatus) => void;
+  leadSent: string[];
+  onLeadSent: (ids: string[]) => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [netCount, setNetCount] = useState<number | null>(null);
   const drafts = (pr?.drafts ?? 0) + (pr?.manual ?? 0);
   const tail = titleTail(p.title);
   const supply = isSupplyPriority(p);
@@ -187,9 +243,66 @@ function Workstream({ id, labelledBy, p, pr, above, below, showTail, onChanged, 
             )}
             <AskMenu p={p} extra={supply ? [{ label: "Run the next action", prompt: priorityPrompt(p) }] : []} />
           </div>
-          <NetworkList p={p} picked={picked} onPick={onPick} sent={sent} onSent={onSent} />
+          <PeopleTabs
+            p={p}
+            tab={people}
+            onTab={onPeople}
+            counts={{ leads: leads.fresh.length, network: netCount }}
+            leads={<LeadQueue p={p} fresh={leads.fresh} approved={leads.approved} loading={leadsLoading} onDecide={onDecide} sent={leadSent} onSent={onLeadSent} />}
+            network={<NetworkList p={p} picked={picked} onPick={onPick} sent={sent} onSent={onSent} onCount={setNetCount} />}
+          />
         </>
       )}
+    </div>
+  );
+}
+
+const PEOPLE_TABS: { key: PeopleTab; label: string }[] = [
+  { key: "leads", label: "New leads" },
+  { key: "network", label: "In your network" },
+];
+
+/** Two lists of people for one priority: new leads to approve (first) and the best already in the CRM. */
+function PeopleTabs({ p, tab, onTab, counts, leads, network }: {
+  p: Priority;
+  tab: PeopleTab;
+  onTab: (t: PeopleTab) => void;
+  counts: { leads: number; network: number | null };
+  leads: React.ReactNode;
+  network: React.ReactNode;
+}) {
+  const onKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const next: PeopleTab = tab === "leads" ? "network" : "leads";
+    onTab(next);
+    document.getElementById(`pt-${next}-${p.id}`)?.focus();
+  };
+  return (
+    <div className="people">
+      <div className="ptabs" role="tablist" aria-label="People" onKeyDown={onKey}>
+        {PEOPLE_TABS.map((t) => {
+          const n = t.key === "leads" ? counts.leads : counts.network;
+          const on = tab === t.key;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              id={`pt-${t.key}-${p.id}`}
+              aria-selected={on}
+              aria-controls={`pp-${t.key}-${p.id}`}
+              tabIndex={on ? 0 : -1}
+              onClick={() => onTab(t.key)}
+            >
+              {t.label}
+              {n !== null && <i className={t.key === "leads" && n > 0 ? "is-new" : undefined}>{fmtNumber(n)}</i>}
+            </button>
+          );
+        })}
+      </div>
+      <div role="tabpanel" id={`pp-leads-${p.id}`} aria-labelledby={`pt-leads-${p.id}`} hidden={tab !== "leads"}>{leads}</div>
+      <div role="tabpanel" id={`pp-network-${p.id}`} aria-labelledby={`pt-network-${p.id}`} hidden={tab !== "network"}>{network}</div>
     </div>
   );
 }
@@ -207,12 +320,13 @@ function whoLabel(names: (string | null | undefined)[]): string {
  * Tick people (or "Select top 5"), then draft them all in one Claude chat in the Nodus project, or say
  * "Not now" to hide them from this priority for 60 days.
  */
-function NetworkList({ p, picked, onPick, sent, onSent }: {
+function NetworkList({ p, picked, onPick, sent, onSent, onCount }: {
   p: Priority;
   picked: string[];
   onPick: (ids: string[]) => void;
   sent: string[];
   onSent: (ids: string[]) => void;
+  onCount: (n: number | null) => void;
 }) {
   const { data, error, loading, reload } = useLoad(async () => {
     const [rows, ds] = await Promise.all([priorityNetwork(p.id, NET_ASK), networkDismissals([p.id])]);
@@ -230,6 +344,8 @@ function NetworkList({ p, picked, onPick, sent, onSent }: {
     ...[...over.values()].filter((d): d is Dismissal => d !== null),
   ].filter((d) => d.priority_id === p.id && isActiveDismissal(d));
   const rows = withoutDismissed(raw, ds, p.id, NET_MAX);
+  const count = data ? rows.length : null;
+  useEffect(() => onCount(count), [count, onCount]);
   const shown = all ? rows : rows.slice(0, NET_FIRST);
   const sentSet = new Set(sent);
   const visibleIds = new Set(rows.map((r) => r.contact_id));

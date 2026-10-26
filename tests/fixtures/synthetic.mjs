@@ -256,3 +256,44 @@ export function networkFor(priorityId, limit = 15) {
     score, reasons, last_touch: i === 1 ? "2026-10-06" : null,
   }));
 }
+
+// ---------- New leads (lead_candidates): fictional people Claude scouted outside the CRM ----------
+const LEADS = {
+  1: [
+    ["Steve St***t", "VP Capacity Planning", "Northgate AI Cloud", "apollo", 92, "Buys 20-60 MW blocks for GPU clusters; expanding into the Gulf", "Northgate raised a $400m GPU facility in September", "https://example.com/northgate-facility"],
+    ["Lena Hof***n", "Head of Data Centre Strategy", "Kestrel Neocloud", "apollo", 88, "Owns site selection for a neocloud adding MENA capacity", null, null],
+    ["Arjun Me***a", "Director, Infrastructure", "Saffron Labs", "web", 84, "AI lab training in-region; public RFP for 40 MW in 2027", "Saffron Labs posted a 40 MW capacity RFP", "https://example.com/saffron-rfp"],
+    ["Clara Jen***s", "SVP Compute", "Brightwave Models", "apollo", 81, "Leases GPU capacity; recent hires in Riyadh and Dubai", null, null],
+    ["Faisal Q***i", "Chief Infrastructure Officer", "Dune Compute", "apollo", 79, "Regional GPU cloud looking for powered shells", null, null],
+    ["Mei Tan***a", "Head of Capacity", "Lotus AI Cloud", "apollo", 76, "Asia neocloud with stated Middle East expansion", null, null],
+    ["Owen Bra***y", "VP Infrastructure", "Halberd Compute", "apollo", 74, "Buys colocation for H200 clusters", null, null],
+    ["Rosa Del***o", "Director of Sourcing", "Vireo AI", "web", 72, "Sourcing 30 MW for inference in 2027", null, null],
+  ],
+  2: [
+    ["Hugo Ve***t", "Partner, Infrastructure", "Meridian Gulf Capital", "8raise", 90, "Writes $25-75m tickets into digital infrastructure in the GCC", "Meridian Gulf closed a $1.2bn infra fund", "https://example.com/meridian-close"],
+    ["Selma Ar***n", "Investment Director", "Cedar Family Office", "8raise", 83, "Family office with data-centre convertibles in its book", null, null],
+    ["Paolo Fe***i", "Managing Director", "Arcturus Infra Credit", "apollo", 77, "Structured credit for powered land and campuses", null, null],
+  ],
+  3: [
+    ["Jonas Wi***r", "Head of Sales EMEA", "Fjell Systems", "apollo", 86, "Server integrator with H200 allocation in Q1", null, null],
+    ["Ana Ro***s", "Director, Channel", "Brightline Distribution", "apollo", 80, "GPU distributor serving European neoclouds", null, null],
+  ],
+};
+
+export function leadCandidates() {
+  const rows = [];
+  for (const [n, list] of Object.entries(LEADS)) {
+    list.forEach(([name, title, company, source, fit_score, fit_reason, hook, hook_url], i) => {
+      rows.push({
+        id: `1eadcafe-0000-4000-8000-${hex(Number(n) * 100 + i + 1, 12)}`,
+        priority_id: `abababab-0000-4000-8000-00000000000${n}`,
+        name, title, company, company_domain: null,
+        linkedin: i % 2 ? null : `https://www.linkedin.com/in/${name.toLowerCase().replace(/[^a-z]+/g, "-")}example`,
+        country: null, source, source_ref: source === "apollo" ? `ap${hex(Number(n) * 100 + i + 1, 8)}` : null,
+        hook, hook_url, fit_score, fit_reason, status: "new", contact_id: null, decided_at: null,
+        created_at: "2026-10-26T06:00:00Z",
+      });
+    });
+  }
+  return rows;
+}

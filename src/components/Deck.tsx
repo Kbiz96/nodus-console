@@ -187,6 +187,8 @@ function DeckCard({ o, person, priority, canLater, onDone, onLater }: {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Another list (the New leads queue) already handled this key.
+      if (e.defaultPrevented) return;
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
       if (document.querySelector(".palette")) return;

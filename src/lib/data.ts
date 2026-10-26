@@ -8,6 +8,7 @@ import { ukToday } from "./crm.ts";
 import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
+import { LEAD_COLS, decisionPatch, type Lead, type LeadStatus } from "./leads.ts";
 
 export const MATCH_CARD_COLS =
   "id,status,total_score,scores,thesis,explanation,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
@@ -267,6 +268,33 @@ export async function networkDismiss(priorityId: string, contactIds: string[], r
 export async function networkUndismiss(priorityId: string, contactIds: string[]): Promise<void> {
   if (contactIds.length === 0) return;
   must(await supabase.from("network_dismissals").delete().eq("priority_id", priorityId).in("contact_id", contactIds).select("id"));
+}
+
+/**
+ * New and approved leads (lead_candidates) for these priorities. If the table cannot be read, the queue is empty
+ * rather than breaking the card.
+ */
+export async function leadsLoad(priorityIds: string[]): Promise<Lead[]> {
+  const ids = [...new Set(priorityIds)].filter(Boolean);
+  if (ids.length === 0) return [];
+  const res = await supabase
+    .from("lead_candidates")
+    .select(LEAD_COLS)
+    .in("priority_id", ids)
+    .in("status", ["new", "approved"])
+    .order("fit_score", { ascending: false, nullsFirst: false })
+    .limit(500);
+  if (res.error) {
+    console.warn("lead_candidates not readable:", res.error.message);
+    return [];
+  }
+  return (res.data ?? []) as unknown as Lead[];
+}
+
+/** Approve, dismiss, or put back to new (Undo). */
+export async function leadsDecide(ids: string[], status: LeadStatus): Promise<void> {
+  if (ids.length === 0) return;
+  must(await supabase.from("lead_candidates").update(decisionPatch(status)).in("id", ids).select("id"));
 }
 
 /** Names for the Dismissed list, straight from the CRM. */

@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { focusData, networkFor, synthetic } from "./fixtures/synthetic.mjs";
+import { focusData, leadCandidates, networkFor, synthetic } from "./fixtures/synthetic.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
@@ -16,6 +16,9 @@ const focusShots = process.env.FOCUS_SHOTS || shots;
 // The batch-draft screenshots (selection bar visible) can go to their own folder too.
 const batchShots = process.env.BATCH_SHOTS || focusShots;
 const fx = JSON.parse(fs.readFileSync(path.join(here, "fixtures/fixtures.json"), "utf8"));
+fx.tables.lead_candidates = leadCandidates();
+// New-leads screenshots (Focus with the New leads tab) can go to their own folder.
+const leadShots = process.env.LEADS_SHOTS || process.env.FOCUS_SHOTS || process.argv[2] || process.env.SHOTS_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.smoke");
 process.env.PLAYWRIGHT_BROWSERS_PATH ||= "/opt/pw-browsers";
 
 const require = createRequire(import.meta.url);
@@ -159,20 +162,92 @@ async function focusFlow(browser, label, viewport) {
   const card1 = page.locator(".mcard").first();
   check(await page.locator(".mcard").count() === 2, at("Focus shows the top three priorities as two mandate cards (Al-Risha shares one)"));
   check(await page.locator(".mcard-rank").first().textContent() === "1", at("mandates are in rank order"));
-  check(await card1.getByRole("tab").count() === 2 && (await card1.getByRole("tab").allTextContents()).join("|").includes("Offtakers") && (await card1.getByRole("tab").allTextContents()).join("|").includes("Investors"), at("Al-Risha reads as one mandate with two workstreams"));
+  const wsTabs = card1.locator(".mtabs [role=tab]");
+  check(await wsTabs.count() === 2 && (await wsTabs.allTextContents()).join("|").includes("Offtakers") && (await wsTabs.allTextContents()).join("|").includes("Investors"), at("Al-Risha reads as one mandate with two workstreams"));
   await card1.locator(".seal").waitFor();
   check(await card1.locator(".seal").textContent() === "Signed" && (await card1.locator(".mchips").textContent())?.includes("Fee protected ✓"), at("signed badge and fee chip come from the linked deal"));
-  await card1.locator(".net-row").first().waitFor();
-  check(await card1.locator(".net-row").count() === 5, at("Best in your network shows the top five"));
-  check(rpcCalls.some((c) => c.name === "priority_network" && c.body.p_priority === P1), at("network comes from priority_network"));
-  check(await card1.getByRole("link", { name: "Draft for me" }).count() === 0, at("there is no per-person Draft for me any more"));
-
-  // Best in your network: tick three people (box, whole row, box), draft them in ONE Claude chat
+  // ---- New leads: the default tab, approve / dismiss / undo, batch, keys, Write outbound, Find 50 more ----
   await page.evaluate(() => {
     const open = window.open.bind(window);
     window.__opened = [];
     window.open = (u, ...rest) => (window.__opened.push(String(u)), open(u, ...rest));
   });
+  await card1.locator(".lead-row").first().waitFor();
+  const ptabs = card1.locator(".ptabs [role=tab]");
+  check((await ptabs.allTextContents()).join("|").startsWith("New leads8|In your network") && await ptabs.first().getAttribute("aria-selected") === "true", at("New leads is the first, selected tab with its count"));
+  check(rpcCalls.length >= 0 && (await card1.locator(".mchips li.t-new").textContent()) === "11 new leads", at("the card header shows 11 new leads across both workstreams"));
+  check(await card1.locator(".lead-row").count() === 6 && (await card1.locator(".lead-row .net-name").first().textContent()) === "Steve St***t", at("the queue shows six, best fit first"));
+  const row1 = card1.locator(".lead-row").first();
+  check((await row1.locator(".lead-src").textContent()) === "Apollo" && (await row1.locator(".lead-why").textContent())?.startsWith("Buys 20-60 MW") && await row1.locator("a.lead-hook").getAttribute("href") === "https://example.com/northgate-facility", at("a lead row has source, fit reason and hook link"));
+  const findHref = (await card1.getByRole("link", { name: "Find 50 more" }).first().getAttribute("href")) ?? "";
+  const fq = new URL(findHref).searchParams.get("q") ?? "";
+  check(new URL(findHref).searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && fq.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker). Deep lead scout: find the 50 best people") && fq.includes('Who we need: "Neoclouds and AI labs needing 50 MW+ in the Middle East"'), at("Find 50 more opens a deep scout in the Nodus project"));
+  if (label === "phone" || label === "desktop") { fs.mkdirSync(leadShots, { recursive: true }); await page.waitForTimeout(300); await page.screenshot({ path: path.join(leadShots, `leads-flow-${label}.png`) }); }
+
+  let wL = writes.length;
+  await card1.getByRole("button", { name: "Approve Steve St***t" }).click();
+  await page.getByText("Approved Steve St***t.").waitFor();
+  const ap = writes.slice(wL).find((w) => w.table === "lead_candidates" && w.method === "PATCH");
+  check(Boolean(ap) && ap.body.status === "approved" && /^\d{4}-\d{2}-\d{2}T/.test(ap.body.decided_at) && ap.url.includes("1eadcafe-0000-4000-8000-000000000065"), at("Approve writes status approved with decided_at"));
+  check(await card1.locator(".lead-row", { hasText: "Steve St***t" }).count() === 0 && (await card1.locator(".lead-ok h5").textContent()) === "Approved (1)" && (await ptabs.first().textContent()) === "New leads7", at("the lead moves to Approved at once and the count drops"));
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await page.getByText("Undone.").waitFor();
+  check(writes.slice(wL).some((w) => w.table === "lead_candidates" && w.method === "PATCH" && w.body.status === "new" && w.body.decided_at === null), at("Undo puts the lead back to new"));
+  check(await card1.locator(".lead-row", { hasText: "Steve St***t" }).count() === 1 && await card1.locator(".lead-ok").count() === 0, at("Undo brings the lead straight back"));
+
+  wL = writes.length;
+  await card1.getByRole("button", { name: "Dismiss Faisal Q***i" }).click();
+  await page.getByText("Dismissed Faisal Q***i.").waitFor();
+  check(writes.slice(wL).some((w) => w.table === "lead_candidates" && w.method === "PATCH" && w.body.status === "dismissed"), at("Dismiss writes status dismissed"));
+  check(await card1.locator(".lead-row", { hasText: "Faisal Q***i" }).count() === 0, at("a dismissed lead leaves the queue"));
+
+  await card1.getByRole("checkbox", { name: "Lena Hof***n" }).check();
+  await card1.locator(".lead-row", { hasText: "Arjun Me***a" }).locator(".net-role").click();
+  const lbar = card1.locator(".leads .net-batch");
+  await lbar.waitFor();
+  check((await lbar.textContent())?.includes("2 selected") && await lbar.getByRole("button", { name: "Approve 2" }).isVisible() && await lbar.getByRole("button", { name: "Dismiss 2" }).isVisible(), at("the lead batch bar offers Approve 2 and Dismiss 2"));
+  if (label === "phone") await page.screenshot({ path: path.join(leadShots, "leads-batch-phone.png") });
+  await lbar.getByRole("button", { name: "Approve 2" }).click();
+  await page.getByText("Approved 2 leads.").waitFor();
+  check((await card1.locator(".lead-ok h5").textContent()) === "Approved (2)" && await card1.locator(".leads .net-batch").count() === 0, at("Approve 2 moves both to Approved and the bar goes"));
+
+  if (label === "desktop") {
+    await card1.locator(".lead-row").first().focus();
+    await page.keyboard.press("j");
+    const second = (await card1.locator(".lead-row").nth(1).locator(".net-name").textContent()) ?? "";
+    await page.keyboard.press("a");
+    await page.getByText(`Approved ${second}.`).waitFor();
+    check((await card1.locator(".lead-ok h5").textContent()) === "Approved (3)", at("J then A approves the second lead from the keyboard"));
+    const third = (await card1.locator(".lead-row").nth(1).locator(".net-name").textContent()) ?? "";
+    check(await page.evaluate(() => document.activeElement?.classList.contains("lead-row")) && (await page.evaluate(() => document.activeElement?.querySelector(".net-name")?.textContent)) === third, at("focus moves to the next lead after a key decision"));
+    await page.keyboard.press("x");
+    await page.getByText(`Dismissed ${third}.`).waitFor();
+    check(await card1.locator(".lead-row", { hasText: third }).count() === 0, at("X dismisses from the keyboard"));
+    await page.screenshot({ path: path.join(leadShots, "leads-approved-desktop.png") });
+  }
+
+  const nApproved = label === "desktop" ? 3 : 2;
+  const pop = page.waitForEvent("popup");
+  await card1.getByRole("button", { name: `Write outbound for ${nApproved}` }).click();
+  await (await pop).close().catch(() => undefined);
+  const opened = await page.evaluate(() => window.__opened);
+  const wu = new URL(opened[opened.length - 1] ?? "https://x");
+  const wq = wu.searchParams.get("q") ?? "";
+  check(opened.length === 1 && wu.searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3", at("Write outbound opens one chat in the Nodus project"));
+  check(wq.startsWith(`Nodus command (priority 1: Al-Risha phase 1: find the offtaker). Write best-in-class outbound for these ${nApproved} approved leads (lead_candidates ids below).`) &&
+    wq.includes("Lena Hof***n, Head of Data Centre Strategy, Kestrel Neocloud (lead 1eadcafe-0000-4000-8000-000000000066, apollo ap00000066)") &&
+    wq.includes("Arjun Me***a, Director, Infrastructure, Saffron Labs (lead 1eadcafe-0000-4000-8000-000000000067)"), at("the outbound instruction lists lead ids and Apollo refs"));
+  check(await card1.locator(".lead-ok .lead-sent").count() === nApproved && await card1.getByRole("button", { name: /^Write outbound/ }).count() === 0, at("approved leads are marked Sent to Claude"));
+  await page.evaluate(() => { window.__opened = []; });
+
+  await card1.getByRole("tab", { name: /^In your network/ }).click();
+  await card1.locator(".net-row").first().waitFor();
+  check(await card1.locator(".net-row").count() === 5, at("Best in your network shows the top five"));
+  check((await ptabs.nth(1).textContent()) === "In your network7", at("the network tab shows its count"));
+  check(rpcCalls.some((c) => c.name === "priority_network" && c.body.p_priority === P1), at("network comes from priority_network"));
+  check(await card1.getByRole("link", { name: "Draft for me" }).count() === 0, at("there is no per-person Draft for me any more"));
+
+  // Best in your network: tick three people (box, whole row, box), draft them in ONE Claude chat
   check(await card1.locator(".net-batch").count() === 0, at("no batch bar until someone is ticked"));
   await card1.getByRole("checkbox", { name: "Leila Nasser" }).check();
   await card1.locator(".net-row", { hasText: "Karim Aziz" }).locator(".net-role").click();
@@ -205,6 +280,8 @@ async function focusFlow(browser, label, viewport) {
   await card1.getByRole("button", { name: /^Select top/ }).click();
   check((await card1.locator(".net-batch").textContent())?.includes("2 selected"), at("Select top 5 skips people already sent to Claude"));
   await card1.getByRole("tab", { name: /Investors/ }).click();
+  check(await card1.getByRole("tab", { name: /^New leads/ }).getAttribute("aria-selected") === "true", at("each workstream opens on its own New leads"));
+  await card1.getByRole("tab", { name: /^In your network/ }).click();
   await card1.locator(".net-row").first().waitFor();
   check(await card1.locator(".net-batch").count() === 0 && await card1.locator(".mtab-picked").count() === 1, at("the Investors tab has its own selection; Offtakers shows its picks"));
   await card1.getByRole("tab", { name: /Offtakers/ }).click();
@@ -254,7 +331,7 @@ async function focusFlow(browser, label, viewport) {
   const ask = card1.getByRole("link", { name: "Ask Claude", exact: true });
   const href = (await ask.getAttribute("href")) ?? "";
   const q = new URL(href).searchParams.get("q") ?? "";
-  check(href.startsWith("https://claude.ai/new?q=") && new URL(href).searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker): Reach 25 neoclouds") && q.endsWith("tag drafts with priority 1."), at("Ask Claude opens claude.ai with the ready instruction"));
+  check(href.startsWith("https://claude.ai/new?q=") && new URL(href).searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker): Reach 25 neoclouds") && q.split("\n\nBefore doing anything:")[0].endsWith("tag drafts with priority 1.") && q.includes("Before doing anything: search what has already been done"), at("Ask Claude opens claude.ai with the ready instruction"));
   const popup = page.waitForEvent("popup");
   await ask.click();
   await (await popup).close().catch(() => undefined);
@@ -630,8 +707,11 @@ try {
     await p.goto(base);
     await p.getByRole("heading", { name: "Signed mandates" }).waitFor();
     await p.locator(".deck-card").waitFor();
-    await p.locator(".net-row").first().waitFor();
+    await p.locator(".lead-row").first().waitFor();
     await p.waitForTimeout(500);
+    fs.mkdirSync(leadShots, { recursive: true });
+    await p.screenshot({ path: path.join(leadShots, `leads-focus-${name}.png`) });
+    await p.locator(".mcard").first().screenshot({ path: path.join(leadShots, `leads-card-${name}.png`) });
     await p.screenshot({ path: path.join(focusShots, `focus-${name}.png`) });
     await p.screenshot({ path: path.join(focusShots, `focus-${name}-full.png`), fullPage: true });
     check(/1\s*of\s*17/.test(await p.locator(".deck-count").textContent() ?? ""), `Do now counts 17 drafts and leaves the parked ones out (${name})`);
@@ -639,7 +719,7 @@ try {
     const sup = p.locator(".mcard").nth(1);
     check((await sup.locator(".net h4").textContent()) === "Suppliers and integrators in your network", `the supplier mandate labels its network list (${name})`);
     check((await sup.locator(".seal").textContent()) === "Not signed yet" && (await sup.locator(".mchips").textContent())?.includes("Fee letter outstanding"), `an unsigned deal says what is outstanding (${name})`);
-    const quotes = new URL((await sup.getByRole("link", { name: "Ask Claude: get quotes" }).getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
+    const quotes = new URL((await sup.getByRole("link", { name: "Ask Claude: get quotes" }).getAttribute("href")) ?? "https://x").searchParams.get("q")?.split("\n\nBefore doing anything:")[0] ?? "";
     check(quotes === "Nodus command (priority 3: Basalt): prepare an anonymised RFQ for the 100 MW BOM (no Basalt name or project details) to the best 5 integrators/suppliers in my network and new ones; draft for my approval.", `Ask Claude: get quotes has the RFQ instruction (${name})`);
     await p.getByRole("button", { name: "Show SE Wisconsin brownfield site (Project A)" }).click();
     await p.locator(".mcard").nth(2).locator(".mdeal.overdue").waitFor();
@@ -668,7 +748,7 @@ try {
     await p.goto(`${base}#/opportunities/11111111-1111-4111-8111-111111111111`);
     const enr = p.getByRole("link", { name: "Enrich & draft" });
     await enr.waitFor();
-    const eq = new URL((await enr.getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
+    const eq = new URL((await enr.getAttribute("href")) ?? "https://x").searchParams.get("q")?.split("\n\nBefore doing anything:")[0] ?? "";
     check(/^Nodus command: enrich opportunity NOD-11111111 \(.+\) with decision makers \(Apollo, work emails only\) and draft first touches tied to my top priority that fits; put drafts in my console\.$/.test(eq), `Enrich & draft has the enrich instruction (${name})`);
     const rb = rpcCalls.length;
     const pop = p.waitForEvent("popup");
