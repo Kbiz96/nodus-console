@@ -1,7 +1,9 @@
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 import { Link } from "react-router-dom";
-import { contactNames, leadsDecide, leadsLoad, networkDismiss, networkDismissals, networkUndismiss, priorityNetwork } from "../lib/data.ts";
-import { LEAD_UNDO_MS, decide, leadQueues, newLeadCounts, type Lead, type LeadOverrides, type LeadStatus } from "../lib/leads.ts";
+import { contactNames, leadsLoad, networkDismiss, networkDismissals, networkUndismiss, priorityNetwork } from "../lib/data.ts";
+import { leadQueues, newLeadCounts, type Lead, type LeadStatus } from "../lib/leads.ts";
+import { remember } from "../lib/calm.ts";
+import { useLeadDecide, whoLabel } from "./useLeadDecide.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { priorityPrompt } from "../lib/focus.ts";
 import { fmtDay } from "../lib/crm.ts";
@@ -46,8 +48,10 @@ type PeopleTab = "leads" | "network";
  * One signed mandate: the paper (from the linked deal), the deal's next step, and one workstream per priority.
  * Two priorities on the same mandate (Al-Risha offtakers and investors) share one card with a switch.
  */
-export function MandateCard({ g, deals, progress, all, onChanged }: {
+export function MandateCard({ g, deals, progress, all, onChanged, defaultOpen = true }: {
   g: MandateGroup<Priority>;
+  /** Open on first visit; after that the card remembers what Kuran chose. */
+  defaultOpen?: boolean;
   deals: Map<string, Deal>;
   progress: Map<string, PriorityProgress>;
   /** Every active priority in rank order, for move up and down. */
@@ -59,7 +63,10 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
   const [sent, setSent] = useState<PerPriority>({});
   const [people, setPeople] = useState<Record<string, PeopleTab>>({});
   const [leadSent, setLeadSent] = useState<PerPriority>({});
-  const [over, setOver] = useState<LeadOverrides>(new Map());
+  const { over, decideLeads } = useLeadDecide();
+  const openKey = `nodus-mcard-open-${g.key}`;
+  const [open, setOpenState] = useState(() => (remember(openKey) ?? (defaultOpen ? "1" : "0")) === "1");
+  const setOpen = (v: boolean) => { remember(openKey, v ? "1" : "0"); setOpenState(v); };
   const memberIds = g.members.map((m) => m.id).sort();
   const leadsQ = useLoad(() => leadsLoad(memberIds), `leads-${memberIds.join(",")}`);
   const leads = leadsQ.data ?? [];
@@ -67,34 +74,6 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
   const totalNew = g.members.reduce((s, m) => s + (newCounts.get(m.id) ?? 0), 0);
   const p = g.members[Math.min(tab, g.members.length - 1)];
 
-  /** Approve, dismiss or put back: on screen at once, then saved; approve and dismiss offer Undo for 6 seconds. */
-  const decideLeads = async (rows: Lead[], status: LeadStatus, quiet = false) => {
-    const ids = rows.map((r) => r.id);
-    if (ids.length === 0) return;
-    const before = new Map(ids.map((id) => [id, over.has(id) ? over.get(id)! : rows.find((r) => r.id === id)!.status] as const));
-    setOver((m) => decide(m, ids, status));
-    try {
-      await leadsDecide(ids, status);
-    } catch (e) {
-      setOver((m) => {
-        const next = new Map(m);
-        for (const [id, st] of before) next.set(id, st);
-        return next;
-      });
-      toast(`That did not save: ${friendlyError(e)}`, false);
-      return;
-    }
-    if (quiet) return;
-    if (status === "new") {
-      toast(`Moved back to new leads: ${whoLabel(rows.map((r) => r.name))}.`);
-      return;
-    }
-    const verb = status === "approved" ? "Approved" : "Dismissed";
-    toast(`${verb} ${rows.length === 1 ? rows[0].name : `${rows.length} leads`}.`, true, {
-      ms: LEAD_UNDO_MS,
-      actions: [{ label: "Undo", primary: true, run: () => void decideLeads(rows.map((r) => ({ ...r, status })), "new", true).then(() => toast("Undone.")) }],
-    });
-  };
   const linked = g.dealIds.map((id) => deals.get(id)).filter((d): d is Deal => Boolean(d));
   const signed = signedState(linked);
   const next = dealNext(linked);
@@ -102,14 +81,27 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
   const idx = all.findIndex((x) => x.id === p.id);
   const headId = `m-${g.key}`;
   return (
-    <article className={`mcard${signed.state === "signed" ? " is-signed" : ""}`} aria-labelledby={headId}>
+    <article className={`mcard${signed.state === "signed" ? " is-signed" : ""}${open ? "" : " is-folded"}`} aria-labelledby={headId}>
       <div className="mcard-rank" aria-label={`Priority ${p.rank}`}>{p.rank}</div>
       <div className="mcard-main">
       <header className="mcard-head">
         <div className="mcard-id">
           <div className="mcard-title">
             <h3 id={headId}>{g.name}</h3>
-            {signed.badge && <span className={`seal ${signed.state}`}>{signed.badge}</span>}
+            <span className="mcard-tr">
+              {signed.badge && <span className={`seal ${signed.state}`}>{signed.badge}</span>}
+              <button
+                type="button"
+                className="mfold"
+                aria-expanded={open}
+                aria-controls={`mbody-${g.key}`}
+                aria-label={open ? `Fold ${g.name}` : `Open ${g.name}`}
+                title={open ? "Fold" : "Open"}
+                onClick={() => setOpen(!open)}
+              >
+                <Icon.chevron />
+              </button>
+            </span>
           </div>
           {(signed.chips.length > 0 || signed.state === "none" || totalNew > 0) && (
             <ul className="mchips" aria-label="Paperwork and leads">
@@ -122,6 +114,7 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
         </div>
       </header>
 
+      {open && (<div className="mbody" id={`mbody-${g.key}`}>
       {g.members.length > 1 && (
         <div className="mtabs" role="tablist" aria-label="Workstreams">
           {g.members.map((m, i) => {
@@ -169,6 +162,7 @@ export function MandateCard({ g, deals, progress, all, onChanged }: {
         leadSent={leadSent[p.id] ?? []}
         onLeadSent={(ids) => setLeadSent((x) => ({ ...x, [p.id]: [...new Set([...(x[p.id] ?? []), ...ids])] }))}
       />
+      </div>)}
       </div>
     </article>
   );
@@ -308,12 +302,6 @@ function PeopleTabs({ p, tab, onTab, counts, leads, network }: {
 }
 
 /** Who a message is about: "Leila Nasser", "Leila Nasser and Omar Haddad", "3 people". */
-function whoLabel(names: (string | null | undefined)[]): string {
-  const n = names.length;
-  if (n === 1) return names[0] || "1 person";
-  if (n === 2 && names.every(Boolean)) return `${names[0]} and ${names[1]}`;
-  return `${n} people`;
-}
 
 /**
  * The best people already in the CRM for this priority (priority_network), five first, up to fifteen.

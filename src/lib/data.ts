@@ -9,6 +9,7 @@ import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
 import { LEAD_COLS, decisionPatch, type Lead, type LeadStatus } from "./leads.ts";
+import { briefIsEmpty, parseBrief, type Brief, type LiveCounts, type PipelineCounts } from "./brief.ts";
 
 export const MATCH_CARD_COLS =
   "id,status,total_score,scores,thesis,explanation,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
@@ -289,6 +290,79 @@ export async function leadsLoad(priorityIds: string[]): Promise<Lead[]> {
     return [];
   }
   return (res.data ?? []) as unknown as Lead[];
+}
+
+// ---------- the front page: brief, live counts, Background BD ----------
+
+/** Today's brief (UK date), or null when it is not in yet or cannot be read. */
+export async function briefLoad(day = ukToday()): Promise<Brief | null> {
+  const res = await supabase.from("daily_briefs").select("day,body,created_at").eq("day", day).limit(1);
+  if (res.error) {
+    console.warn("daily_briefs not readable:", res.error.message);
+    return null;
+  }
+  const row = (res.data ?? [])[0] as { day: string; body: unknown } | undefined;
+  if (!row) return null;
+  const b = parseBrief(row.body, row.day);
+  return briefIsEmpty(b) ? null : b;
+}
+
+/** A head-only count; null when the table or view cannot be read. */
+async function countOf(build: () => PromiseLike<{ count: number | null; error: { message: string } | null }>): Promise<number | null> {
+  try {
+    const res = await build();
+    if (res.error) return null;
+    return res.count ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+/** The counts behind the live Do now items. Anything unreadable counts as zero, so the page still renders. */
+export async function liveCountsLoad(): Promise<LiveCounts> {
+  const head = { count: "exact" as const, head: true };
+  const [mandateLeads, backgroundLeads, drafts, replies] = await Promise.all([
+    countOf(() => supabase.from("lead_candidates").select("id", head).eq("status", "new").not("priority_id", "is", null)),
+    countOf(() => supabase.from("lead_candidates").select("id", head).eq("status", "new").is("priority_id", null)),
+    countOf(() => supabase.from("outreach").select("id", head).in("status", ["draft", "manual"])),
+    countOf(() => supabase.from("outreach").select("id", head).eq("status", "replied")),
+  ]);
+  return { mandateLeads: mandateLeads ?? 0, backgroundLeads: backgroundLeads ?? 0, drafts: drafts ?? 0, replies: replies ?? 0 };
+}
+
+/** bd_queue by tier: A is routed to a signed mandate, B is the background queue. */
+export async function bdCountsLoad(): Promise<PipelineCounts> {
+  const head = { count: "exact" as const, head: true };
+  const [routed, background] = await Promise.all([
+    countOf(() => supabase.from("bd_queue").select("opportunity_id", head).eq("tier", "A")),
+    countOf(() => supabase.from("bd_queue").select("opportunity_id", head).eq("tier", "B")),
+  ]);
+  return { routed, background };
+}
+
+/** Background BD leads (no priority), new and approved, with each opportunity's line for the chip. */
+export async function bdLeadsLoad(): Promise<Lead[]> {
+  const res = await supabase
+    .from("lead_candidates")
+    .select(LEAD_COLS)
+    .is("priority_id", null)
+    .in("status", ["new", "approved"])
+    .order("fit_score", { ascending: false, nullsFirst: false })
+    .limit(300);
+  if (res.error) {
+    console.warn("background leads not readable:", res.error.message);
+    return [];
+  }
+  const rows = (res.data ?? []) as unknown as Lead[];
+  const opp = [...new Set(rows.map((r) => r.opportunity_id).filter(Boolean))] as string[];
+  if (opp.length === 0) return rows;
+  const lines = new Map<string, string>();
+  for (let i = 0; i < opp.length; i += 150) {
+    const o = await supabase.from("opportunities").select("id,line").in("id", opp.slice(i, i + 150));
+    if (o.error) break;
+    for (const x of (o.data ?? []) as { id: string; line: string | null }[]) if (x.line) lines.set(x.id, x.line);
+  }
+  return rows.map((r) => ({ ...r, line: r.opportunity_id ? lines.get(r.opportunity_id) ?? null : null }));
 }
 
 /** Approve, dismiss, or put back to new (Undo). */

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { prioritiesLoad, priorityDeals } from "../lib/data.ts";
-import { activeInOrder, greeting, replyPrompt, ukLongDate } from "../lib/focus.ts";
+import { activeInOrder, replyPrompt } from "../lib/focus.ts";
 import { groupPriorities, splitVisible, withoutParked } from "../lib/mandates.ts";
 import { fmtDate, fmtNumber } from "../lib/format.ts";
 import type { Outreach, Priority, PriorityProgress } from "../lib/types.ts";
@@ -11,6 +11,8 @@ import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { AddPriority, AskClaude, PriorityCard } from "../components/PriorityCard.tsx";
 import { MandateCard } from "../components/MandateCard.tsx";
 import Deck from "../components/Deck.tsx";
+import { TodayBrief } from "../components/TodayBrief.tsx";
+import { BackgroundBd } from "../components/BackgroundBd.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 
@@ -20,24 +22,22 @@ export function usePriorities() {
   return useLoad(prioritiesLoad, "priorities");
 }
 
-/** The ADHD-friendly home: a few priorities, one draft at a time, and replies to answer. Nothing else. */
+/**
+ * The front page, top to bottom: Today (the morning brief with Do now), the signed mandates beside the draft deck,
+ * then Background BD. Everything else lives under More.
+ */
 export default function Focus() {
   useTitle("Focus");
   const { data, error, loading, reload } = usePriorities();
   const priorities = data?.priorities ?? [];
-  const now = new Date();
   return (
     <div className="focus">
-      <header className="focus-head">
-        <p className="focus-date">{ukLongDate(now)}</p>
-        <h1>{greeting(now)}, Kuran.</h1>
-        <p className="focus-lede">Here&rsquo;s what moves money today.</p>
-      </header>
+      <TodayBrief />
 
-      <div className="focus-grid">
+      <div className="focus-grid" id="signed-mandates">
         <section className="focus-col" aria-labelledby="h-priorities">
           <div className="focus-sec">
-            <h2 id="h-priorities">Signed mandates</h2>
+            <h2 id="h-priorities" tabIndex={-1}>Signed mandates</h2>
             <Link to="/priorities" className="small">Edit priorities</Link>
           </div>
           {error && !data ? (
@@ -49,15 +49,17 @@ export default function Focus() {
           )}
         </section>
 
-        <section className="focus-col focus-do" aria-labelledby="h-do">
+        <section className="focus-col focus-do" aria-labelledby="h-drafts">
           <div className="focus-sec">
-            <h2 id="h-do">Do now</h2>
+            <h2 id="h-drafts">Drafts to approve</h2>
             <Link to="/review" className="small">Open full screen</Link>
           </div>
           <Deck priorities={priorities} onChanged={reload} />
           <Replies priorities={priorities} />
         </section>
       </div>
+
+      <BackgroundBd />
     </div>
   );
 }
@@ -84,8 +86,8 @@ function SignedMandates({ priorities, progress, onChanged }: {
   return (
     <div className="plist">
       {active.length === 0 && <p className="empty">No live mandates. Add the one thing you most want to close this week.</p>}
-      {list.map((g) => (
-        <MandateCard key={g.key} g={g} deals={dealMap} progress={progress} all={active} onChanged={onChanged} />
+      {list.map((g, i) => (
+        <MandateCard key={g.key} defaultOpen={i === 0} g={g} deals={dealMap} progress={progress} all={active} onChanged={onChanged} />
       ))}
       {!more && hidden.length > 0 && (
         <button type="button" className="padd" onClick={() => setMore(true)}>
@@ -139,7 +141,7 @@ function Replies({ priorities }: { priorities: Priority[] }) {
   const rows = data ?? [];
   const rank = new Map(priorities.map((p) => [p.id, p.rank]));
   return (
-    <details className="waiting">
+    <details className="waiting" id="waiting">
       <summary>
         <span>Waiting on others</span>
         <span className="muted small">{rows.length === 0 ? "No replies to answer" : `${fmtNumber(rows.length)} ${rows.length === 1 ? "reply" : "replies"} to answer`}</span>

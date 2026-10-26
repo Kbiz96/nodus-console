@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { fmtNumber, safeHref } from "../lib/format.ts";
 import { scoreWidth, workstreamLabel } from "../lib/mandates.ts";
 import { findMorePrompt, moveCursor, sourceLabel, writeOutboundPrompt, type Lead, type LeadStatus } from "../lib/leads.ts";
+import { lineChip } from "../lib/brief.ts";
 import type { Priority } from "../lib/types.ts";
 import { AskClaude, openInClaude } from "./PriorityCard.tsx";
 import { Icon } from "./Brand.tsx";
@@ -13,8 +14,12 @@ const FIRST = 6;
  * approved ones collect underneath and go to one Claude chat that enriches, drafts and sends on Kuran's "send".
  * Desktop keys: J and K move, A approves, X dismisses.
  */
-export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent }: {
-  p: Priority;
+export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent, find: findSlot, emptyText }: {
+  /** The signed mandate, or null for Background BD leads from the engine. */
+  p: Priority | null;
+  /** Replaces "Find 50 more" (Background BD passes "Process 25 now"). */
+  find?: ReactNode;
+  emptyText?: string;
   fresh: Lead[];
   approved: Lead[];
   loading: boolean;
@@ -33,12 +38,12 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent 
   const sel = picked.filter((id) => ids.has(id));
   const selSet = new Set(sel);
   const n = sel.length;
-  const ws = workstreamLabel(p);
+  const scopeLabel = p ? `Priority ${p.rank}, ${workstreamLabel(p).toLowerCase()}` : "Background BD";
   const sentSet = new Set(sent);
   const toWrite = approved.filter((r) => !sentSet.has(r.id));
-  const find = (
+  const find = findSlot ?? (p ? (
     <AskClaude className="btn lead-find" prompt={findMorePrompt(p)}><Icon.claude />Find 50 more</AskClaude>
-  );
+  ) : null);
 
   // After a key press, keep the focus on the row under the cursor (the next one once a row leaves).
   useEffect(() => {
@@ -79,7 +84,7 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent 
   };
 
   return (
-    <section className="leads" aria-label={`New leads for priority ${p.rank}`}>
+    <section className="leads" aria-label={p ? `New leads for priority ${p.rank}` : "Background BD leads"}>
       {fresh.length > 0 && (
         <div className="net-tools">
           <button type="button" className="net-link" onClick={() => setPicked([...new Set([...sel, ...fresh.slice(0, 5).map((r) => r.id)])])}>
@@ -97,7 +102,7 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent 
         <p className="net-empty muted small" role="status">Getting new leads…</p>
       ) : fresh.length === 0 ? (
         <div className="lead-empty">
-          <p>No new leads. Ask Claude to find more.</p>
+          <p>{emptyText ?? "No new leads. Ask Claude to find more."}</p>
           {find}
         </div>
       ) : (
@@ -108,6 +113,7 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent 
               r={r}
               active={i === Math.min(cursor, shown.length - 1)}
               selected={selSet.has(r.id)}
+              showLine={!p}
               onFocus={() => setCursor(i)}
               onToggle={() => toggle(r.id)}
               onApprove={() => act([r], "approved")}
@@ -161,7 +167,7 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent 
         <div className="net-batch" role="region" aria-label="Selected leads">
           <p className="net-batch-what">
             <b>{fmtNumber(n)} selected</b>
-            <span>Priority {p.rank}, {ws.toLowerCase()}</span>
+            <span>{scopeLabel}</span>
           </p>
           <div className="net-batch-acts">
             <button type="button" className="btn" onClick={() => act(fresh.filter((r) => selSet.has(r.id)), "dismissed")}>Dismiss {fmtNumber(n)}</button>
@@ -173,8 +179,9 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent 
   );
 }
 
-function LeadRow({ r, active, selected, onFocus, onToggle, onApprove, onDismiss }: {
+function LeadRow({ r, active, selected, showLine, onFocus, onToggle, onApprove, onDismiss }: {
   r: Lead;
+  showLine: boolean;
   active: boolean;
   selected: boolean;
   onFocus: () => void;
@@ -214,7 +221,11 @@ function LeadRow({ r, active, selected, onFocus, onToggle, onApprove, onDismiss 
         {role && <span className="net-role">{role}</span>}
       </div>
       <div className="lead-meta">
-        <span className={`lead-src src-${(r.source || "").toLowerCase()}`}>{sourceLabel(r.source)}</span>
+        {showLine && lineChip(r.line) ? (
+          <span className={`lead-src lead-line ln-${r.line}`}>{lineChip(r.line)}</span>
+        ) : (
+          <span className={`lead-src src-${(r.source || "").toLowerCase()}`}>{sourceLabel(r.source)}</span>
+        )}
         <span className="lead-score" title={`Fit score ${fmtNumber(score)}`} aria-label={`Fit score ${fmtNumber(score)}`}>
           <span className="net-bar" aria-hidden><span style={{ width: `${scoreWidth(score)}%` }} /></span>
           <span className="net-num">{fmtNumber(score)}</span>

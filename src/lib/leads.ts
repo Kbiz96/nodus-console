@@ -10,7 +10,12 @@ export type LeadSource = "apollo" | "8raise" | "web" | "engine";
 /** A row of lead_candidates. */
 export interface Lead {
   id: string;
-  priority_id: string;
+  /** null = a Background BD lead from the engine, not tied to a signed mandate. */
+  priority_id: string | null;
+  opportunity_id?: string | null;
+  match_id?: string | null;
+  /** The opportunity's line (capital, powered_land, compute), joined on screen for Background BD leads. */
+  line?: string | null;
   name: string;
   title: string | null;
   company: string | null;
@@ -30,7 +35,7 @@ export interface Lead {
 }
 
 export const LEAD_COLS =
-  "id,priority_id,name,title,company,company_domain,linkedin,country,source,source_ref,hook,hook_url,fit_score,fit_reason,status,contact_id,decided_at,created_at";
+  "id,priority_id,opportunity_id,match_id,name,title,company,company_domain,linkedin,country,source,source_ref,hook,hook_url,fit_score,fit_reason,status,contact_id,decided_at,created_at";
 
 /** How long the Undo stays on screen after approve or dismiss. */
 export const LEAD_UNDO_MS = 6000;
@@ -79,8 +84,8 @@ export interface LeadQueues<T> {
 }
 
 /** One priority's queue and approved strip. */
-export function leadQueues<T extends Lead>(rows: T[], priorityId: string, over: LeadOverrides = new Map()): LeadQueues<T> {
-  const mine = withOverrides(rows.filter((r) => r.priority_id === priorityId), over);
+export function leadQueues<T extends Lead>(rows: T[], priorityId: string | null, over: LeadOverrides = new Map()): LeadQueues<T> {
+  const mine = withOverrides(rows.filter((r) => (r.priority_id ?? null) === priorityId), over);
   return {
     fresh: sortLeads(mine.filter((r) => r.status === "new")),
     approved: sortLeads(mine.filter((r) => r.status === "approved")),
@@ -88,9 +93,9 @@ export function leadQueues<T extends Lead>(rows: T[], priorityId: string, over: 
 }
 
 /** New-lead counts per priority, with on-screen decisions applied. */
-export function newLeadCounts(rows: Pick<Lead, "id" | "priority_id" | "status">[], over: LeadOverrides = new Map()): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const r of withOverrides(rows, over)) if (r.status === "new") m.set(r.priority_id, (m.get(r.priority_id) ?? 0) + 1);
+export function newLeadCounts(rows: Pick<Lead, "id" | "priority_id" | "status">[], over: LeadOverrides = new Map()): Map<string | null, number> {
+  const m = new Map<string | null, number>();
+  for (const r of withOverrides(rows, over)) if (r.status === "new") m.set(r.priority_id ?? null, (m.get(r.priority_id ?? null) ?? 0) + 1);
   return m;
 }
 
@@ -103,20 +108,29 @@ type PromptPriority = Pick<Priority, "rank" | "title">;
 /**
  * "Write outbound for N": one Claude chat that enriches each approved lead with Apollo, finds a sourced hook,
  * creates the CRM contact, drafts, and sends from Gmail only when Kuran replies "send".
+ * With no priority (Background BD leads) the chat is told so, and each line carries the engine opportunity id.
  */
-export function writeOutboundPrompt(leads: Pick<Lead, "id" | "name" | "title" | "company" | "source" | "source_ref">[], p: PromptPriority): string {
+export function writeOutboundPrompt(
+  leads: (Pick<Lead, "id" | "name" | "title" | "company" | "source" | "source_ref"> & { opportunity_id?: string | null })[],
+  p: PromptPriority | null,
+): string {
   const n = leads.length;
+  const scope = p ? `priority ${p.rank}: ${clean(p.title)}` : "background BD, no priority";
+  const save = p
+    ? "Save drafts tagged to this priority"
+    : "Save drafts with no priority (tie each to its engine opportunity)";
   const head =
-    `Nodus command (priority ${p.rank}: ${clean(p.title)}). Write best-in-class outbound for these ${n} approved leads (lead_candidates ids below). ` +
+    `Nodus command (${scope}). Write best-in-class outbound for these ${n} approved leads (lead_candidates ids below). ` +
     "For each: enrich with Apollo by source_ref (work email, full name, LinkedIn; report credits), research one recent sourced hook about them or their firm, " +
     "create/merge the crm_contacts record, then draft one email (and a LinkedIn DM if no work email) with the nodus-command playbook; " +
-    "blind brief only, no client names, no fees. Save drafts tagged to this priority, set each lead's status to 'drafted' and contact_id, " +
+    `blind brief only, no client names, no fees. ${save}, set each lead's status to 'drafted' and contact_id, ` +
     "show me all drafts here, and when I reply \"send\", send the emails from Gmail within the daily cap and record them.";
   const lines = leads.map((x, i) => {
     const who = [clean(x.name) || "Unnamed lead", clean(x.title), clean(x.company)].filter(Boolean).join(", ");
     const src = (x.source ?? "").toLowerCase() || "source";
     const ref = clean(x.source_ref);
-    return `${i + 1}. ${who} (lead ${x.id}${ref ? `, ${src} ${ref}` : ""})`;
+    const opp = !p && x.opportunity_id ? `, opportunity ${x.opportunity_id}` : "";
+    return `${i + 1}. ${who} (lead ${x.id}${ref ? `, ${src} ${ref}` : ""}${opp})`;
   });
   return [head, ...lines].join("\n");
 }

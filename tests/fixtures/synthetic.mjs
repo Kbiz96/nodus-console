@@ -297,3 +297,73 @@ export function leadCandidates() {
   }
   return rows;
 }
+
+// ---------- front page: today's brief, the bd_queue view and Background BD leads (all fictional) ----------
+
+/** A daily_briefs row for `day` (UK date). Every name and number is made up. */
+export function dailyBrief(day) {
+  return {
+    day,
+    created_at: `${day}T05:40:00Z`,
+    body: {
+      headline: "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.",
+      calls: [
+        { time: "10:30", who: "Harlow Compute (CEO)", goal: "Qualify 40 MW need for phase 1; ask for LOI timing" },
+        { time: "14:00", who: "Brightwater Capital", goal: "Investor intro call; confirm ticket range and NCNDA" },
+      ],
+      do_now: [
+        { text: "Send the Al-Risha teaser to the three warmest neoclouds", link: "#/review" },
+        { text: "Chase the Basalt fee letter before Thursday" },
+        { text: "Confirm the 14:00 agenda with Brightwater", link: "https://example.com/brightwater-agenda" },
+      ],
+      could_do: [
+        { text: "Comment on two GTC Berlin posts from capital allocators" },
+        "Tidy the Optio borrower list",
+      ],
+      mandates: [{ rank: 1, title: "Al-Risha phase 1", status: "signed", next: "Offtaker LOI", overdue: false }],
+      digest: [
+        "Engine: 41 new opportunities overnight, 6 in focus lines.",
+        "Nordics: two new data-centre companies registered in Finland.",
+        "GCC: sovereign fund signals more AI infrastructure allocation.",
+        "US: a 200 MW powered shell in Texas listed for sale.",
+        "This fifth line should never show.",
+      ],
+      rep: { q: "What does a take-or-pay clause protect in a capacity LOI?", a: "The seller’s revenue: the buyer pays for reserved capacity whether or not it uses it." },
+    },
+  };
+}
+
+/** bd_queue: 32 rows routed to a mandate (tier A) and 820 in the background (tier B). Only tier is read for counts. */
+export function bdQueue() {
+  const rows = [];
+  for (let i = 0; i < 852; i++) rows.push({ opportunity_id: `0bb0bb00-0000-4000-8000-${hex(i + 1, 12)}`, tier: i < 32 ? "A" : "B", bd_score: 90 - (i % 50) });
+  return rows;
+}
+
+const BD = [
+  ["Rhea S***n", "Managing Partner", "Kestrel Ridge Infrastructure", "capital", 86, "Fund closing for AI infrastructure; writes 30-80m tickets", "Kestrel Ridge closes second infrastructure fund"],
+  ["Tomas Lin***d", "Head of Development", "Northfjord Datahall AS", "powered_land", 81, "New Norwegian data-centre company seeking grid-connected land", "Northfjord Datahall registered in Bergen"],
+  ["Priya Ve***a", "VP Capacity", "Lumen Atlas Cloud", "compute", 77, "Neocloud buying GPU allocation for Q2 2027", "Lumen Atlas announces 4,000-GPU expansion"],
+  ["Jonas Ek***m", "CFO", "Stellar Heat Oy", "capital", 72, "Raising development capital for a 60 MW Finnish campus", "Stellar Heat seeks development partner"],
+  ["Amira H***d", "Director, Real Estate", "Gulfline Digital", "powered_land", 68, "Looking for powered land near Dammam", "Gulfline Digital tender for 100 MW site"],
+];
+
+/** Fictional engine opportunities behind the Background BD leads (only returned when looked up by id). */
+export function bdOpps() {
+  return BD.map((b, i) => ({ id: `0bb0bb00-0000-4000-8000-${hex(i + 1, 12)}`, line: b[3] }));
+}
+
+/** Background BD leads: lead_candidates with no priority, from the engine. */
+export function bdLeads() {
+  return BD.map(([name, title, company, , fit_score, fit_reason, hook], i) => ({
+    id: `bdbdbdbd-0000-4000-8000-${hex(i + 1, 12)}`,
+    priority_id: null,
+    opportunity_id: `0bb0bb00-0000-4000-8000-${hex(i + 1, 12)}`,
+    match_id: null,
+    name, title, company, company_domain: null, linkedin: null, country: null,
+    source: "engine", source_ref: `ap${hex(900 + i, 8)}`,
+    hook, hook_url: `https://example.com/evidence-${i + 1}`,
+    fit_score, fit_reason, status: "new", contact_id: null, decided_at: null,
+    created_at: "2026-10-25T19:00:00Z",
+  }));
+}
