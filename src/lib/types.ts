@@ -150,6 +150,25 @@ export interface Priority {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  /** CRM contact lines this priority needs, e.g. ["Capital-Provide"] (used by priority_network). */
+  target_lines?: string[] | null;
+  keywords?: string[] | null;
+  region_pattern?: string | null;
+}
+
+/** A row from the priority_network database function: someone already in the CRM who fits a priority. */
+export interface NetworkRow {
+  contact_id: string;
+  name: string | null;
+  title: string | null;
+  company: string | null;
+  country: string | null;
+  stage: string | null;
+  linkedin: string | null;
+  email: string | null;
+  score: number;
+  reasons: string[] | null;
+  last_touch: string | null;
 }
 
 /** A row of the priority_progress view: outreach counts per priority. */

@@ -3,7 +3,7 @@
 import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
-import type { Priority, PriorityProgress, SearchAll } from "./types.ts";
+import type { Deal, NetworkRow, Priority, PriorityProgress, SearchAll } from "./types.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
 
@@ -160,6 +160,11 @@ export async function outreachDecide(id: string, decision: "approve" | "skip" | 
 }
 
 /** Kuran has sent a LinkedIn item himself. The one direct status update the console makes. */
+/** Bring a parked draft back into the review deck (status parked -> draft). RLS allows Kuran's login. */
+export async function outreachUnpark(id: string): Promise<void> {
+  mustChange(await supabase.from("outreach").update({ status: "draft" }).eq("id", id).eq("status", "parked").select("id"), "This draft");
+}
+
 export async function outreachMarkSent(id: string): Promise<void> {
   mustChange(await supabase.from("outreach").update({ status: "sent", sent_at: new Date().toISOString() }).eq("id", id).eq("status", "manual").select("id"), "This message");
 }
@@ -191,7 +196,7 @@ export async function crmImport(p: unknown): Promise<Record<string, unknown>> {
 // ---------- priorities (Focus) ----------
 // Kuran's short list of what to close. RLS lets his login read and write the table directly.
 
-export const PRIORITY_COLS = "id,rank,title,goal,who,next_action,line,mandate_ids,deal_ids,status,notes,created_at,updated_at";
+export const PRIORITY_COLS = "id,rank,title,goal,who,next_action,line,mandate_ids,deal_ids,status,notes,created_at,updated_at,target_lines,keywords,region_pattern";
 
 export async function prioritiesLoad(): Promise<{ priorities: Priority[]; progress: Map<string, PriorityProgress> }> {
   const [ps, pr] = await Promise.all([
@@ -211,6 +216,22 @@ export async function prioritiesLoad(): Promise<{ priorities: Priority[]; progre
     });
   }
   return { priorities: [...ps].sort((a, b) => a.rank - b.rank), progress };
+}
+
+export const SIGNED_DEAL_COLS = "id,deal,stage,heat,ncnda_signed,fee_signed,principal_verified,next_step,next_date";
+
+/** The deals linked to priorities, for the signed badge and the deal's next step on Focus. */
+export async function priorityDeals(ids: string[]): Promise<Map<string, Deal>> {
+  const uniq = [...new Set(ids)].filter(Boolean);
+  if (uniq.length === 0) return new Map();
+  const rows = must(await supabase.from("deals").select(SIGNED_DEAL_COLS).in("id", uniq.slice(0, 100))) as unknown as Deal[];
+  return new Map(rows.map((d) => [d.id, d]));
+}
+
+/** The best people already in the CRM for one priority, with plain-English reasons (priority_network). */
+export async function priorityNetwork(id: string, limit = 15): Promise<NetworkRow[]> {
+  const d = must(await supabase.rpc("priority_network", { p_priority: id, p_limit: limit }));
+  return Array.isArray(d) ? (d as NetworkRow[]) : [];
 }
 
 export type PriorityPatch = Partial<Pick<Priority, "rank" | "title" | "goal" | "who" | "next_action" | "line" | "status" | "notes">>;

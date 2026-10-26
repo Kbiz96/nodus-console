@@ -26,6 +26,7 @@ export const OUTREACH_STATUS_LABEL: Record<string, string> = {
   skipped: "Skipped",
   expired: "Expired",
   failed: "Failed",
+  parked: "Parked",
 };
 export const OUTREACH_KIND_LABEL: Record<string, string> = {
   email: "Email",
