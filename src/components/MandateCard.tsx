@@ -9,6 +9,7 @@ import {
   DISMISS_DAYS,
   DISMISS_REASONS,
   batchDraftPrompt,
+  batchEmailPrompt,
   dealNext,
   dismissalRows,
   isActiveDismissal,
@@ -256,6 +257,14 @@ function NetworkList({ p, picked, onPick, sent, onSent }: {
     onPick([]);
   };
 
+  const emailThem = () => {
+    const people = rows.filter((r) => selSet.has(r.contact_id));
+    if (people.length === 0) return;
+    openInClaude(batchEmailPrompt(people, p));
+    onSent(people.map((r) => r.contact_id));
+    onPick([]);
+  };
+
   const bringBack = async (ids: string[], quiet = false) => {
     setOverMany(ids, () => null);
     try {
@@ -357,6 +366,7 @@ function NetworkList({ p, picked, onPick, sent, onSent }: {
           </p>
           <div className="net-batch-acts">
             <button type="button" className="btn" onClick={() => void notNow(sel)}>Not now for {fmtNumber(n)}</button>
+            <button type="button" className="btn" onClick={emailThem}><Icon.claude />Enrich &amp; email {fmtNumber(n)}</button>
             <button type="button" className="btn primary" onClick={draft}><Icon.claude />Draft for {fmtNumber(n)} selected</button>
           </div>
         </div>

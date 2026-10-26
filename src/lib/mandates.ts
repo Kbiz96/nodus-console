@@ -181,6 +181,29 @@ export function batchDraftPrompt(people: BatchPerson[], p: Pick<Priority, "rank"
   return [head, ...lines].join("\n");
 }
 
+/**
+ * "Enrich & email N": one Claude chat (in the Nodus project) that finds each person's work email, drafts an email,
+ * shows them for a yes in the chat, then sends from Gmail and records it. Kuran's "send" in that chat is the approval.
+ */
+export function batchEmailPrompt(people: BatchPerson[], p: Pick<Priority, "rank" | "title">): string {
+  const n = people.length;
+  const whom = n === 1 ? "this person" : `these ${n} people`;
+  const head =
+    `Nodus command (priority ${p.rank}: ${clean(p.title)}). Enrich and email ${whom} from my CRM. ` +
+    "For each: use the work email in their CRM record (contact_id); if missing, find it with Apollo people match " +
+    "(work emails only, never mobiles; tell me the credits used) and save it to the contact. " +
+    "Then draft one email each with the nodus-command playbook and rulebook voice; blind brief only, no client names, no fees. " +
+    "Save each as an outreach draft tagged to this priority, and show me all drafts here. " +
+    "When I reply \"send\" (or name the ones to send), send exactly those from Gmail, 60-90 seconds apart, within the daily cap " +
+    "of 20 first touches, record each with outreach_mark as sent, and update the contact stage to Contacted. " +
+    "Anyone without a verified work email: skip and tell me.";
+  const lines = people.map((x, i) => {
+    const parts = [clean(x.name) || "Unnamed contact", clean(x.title), clean(x.company)].filter(Boolean).join(", ");
+    return `${i + 1}. ${parts} (contact_id ${x.contact_id})`;
+  });
+  return [head, ...lines].join("\n");
+}
+
 // ---------- "Not now" (network_dismissals) ----------
 
 export interface Dismissal {

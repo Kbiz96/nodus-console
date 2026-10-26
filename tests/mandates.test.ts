@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   addDays,
   batchDraftPrompt,
+  batchEmailPrompt,
   dealNext,
   dismissalRows,
   dismissedIds,
@@ -182,4 +183,18 @@ test("parked drafts are filtered out and never part of the deck", () => {
   assert.equal(isParked({ status: "parked" }), true);
   assert.equal(isParked({ status: "draft" }), false);
   assert.ok(!(DECK_STATUSES as readonly string[]).includes("parked"));
+});
+
+test("batchEmailPrompt asks Claude to enrich, draft, wait for send, then send and record", () => {
+  const people = [
+    { contact_id: "c1", name: "Ada Lane", title: "Partner", company: "Example Capital" },
+    { contact_id: "c2", name: "Ben Hall", title: null, company: "Sample FO" },
+  ];
+  const t = batchEmailPrompt(people, { rank: 2, title: "Al-Risha phase 1 (Mindstream): ~$100m convertible investors" });
+  assert.match(t, /^Nodus command \(priority 2: Al-Risha phase 1 \(Mindstream\): ~\$100m convertible investors\)\. Enrich and email these 2 people/);
+  assert.match(t, /Apollo people match/);
+  assert.match(t, /When I reply "send"/);
+  assert.match(t, /outreach_mark/);
+  assert.match(t, /1\. Ada Lane, Partner, Example Capital \(contact_id c1\)/);
+  assert.match(t, /2\. Ben Hall, Sample FO \(contact_id c2\)/);
 });
