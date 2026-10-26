@@ -17,9 +17,10 @@ import { toast } from "./Toast.tsx";
 
 interface Person { id: string; title: string | null; linkedin: string | null }
 
-async function load(priorityId: string | null) {
+async function load(priorityId: string | null, opportunityId: string | null = null) {
   let q = supabase.from("outreach").select(OUTREACH_COLS).in("status", [...DECK_STATUSES]).order("created_at", { ascending: true }).limit(300);
   if (priorityId) q = q.eq("priority_id", priorityId);
+  if (opportunityId) q = q.eq("opportunity_id", opportunityId);
   // Parked drafts never reach the deck (the status filter already leaves them out; this keeps it so).
   let rows = withoutParked(must(await q) as unknown as Outreach[]);
   if (priorityId) rows = rows.filter((r) => r.priority_id === priorityId);
@@ -38,8 +39,8 @@ type Done = { text: string; ok: boolean };
  * One draft at a time. Email: approve (the send batch sends it at the next slot), skip or edit.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
  */
-export default function Deck({ priorities, priorityId = null, onChanged }: { priorities: Priority[]; priorityId?: string | null; onChanged?: () => void }) {
-  const { data, error, loading, reload } = useLoad(() => load(priorityId), `deck-${priorityId ?? "all"}`);
+export default function Deck({ priorities, priorityId = null, opportunityId = null, onChanged }: { priorities: Priority[]; priorityId?: string | null; opportunityId?: string | null; onChanged?: () => void }) {
+  const { data, error, loading, reload } = useLoad(() => load(priorityId, opportunityId), `deck-${priorityId ?? "all"}-${opportunityId ?? ""}`);
   const [queue, setQueue] = useState<string[] | null>(null);
   const [handled, setHandled] = useState(0);
   const [last, setLast] = useState<Done | null>(null);
@@ -73,6 +74,20 @@ export default function Deck({ priorities, priorityId = null, onChanged }: { pri
 
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if ((loading && !data) || !queue) return <Loading what="Getting your drafts…" />;
+
+  if (!current && opportunityId) {
+    return (
+      <div className="deck-empty">
+        {last && <p className={last.ok ? "ok" : "error"} role="status">{last.text}</p>}
+        <h3>{handled > 0 ? "All done for this opportunity." : "No drafts waiting for this opportunity yet."}</h3>
+        <p className="muted">If Claude is still drafting, they appear here when it saves them.</p>
+        <div className="action-row">
+          <Link className="btn big" to={`/opportunities/${opportunityId}`}>Back to the opportunity</Link>
+          <Link className="btn big" to="/review">Review everything else</Link>
+        </div>
+      </div>
+    );
+  }
 
   if (!current) {
     const top = activeInOrder(priorities)[0];

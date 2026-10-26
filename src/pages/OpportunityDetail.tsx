@@ -9,6 +9,8 @@ import { GATE_ORDER, gateBlocker, gateIndex, nextGate } from "../lib/rules.ts";
 import GateControl from "../components/GateControl.tsx";
 import PeoplePanel from "../components/PeoplePanel.tsx";
 import EnrichDraft from "../components/EnrichDraft.tsx";
+import { ResearchPanel, SeqActions, SeqHint, StageChip } from "../components/Sequencer.tsx";
+import { stageOne } from "../lib/sequencer-data.ts";
 import { Confidence, Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, NotFound, SanctionsBadge, useTitle } from "../components/ui.tsx";
 
 interface Opp {
@@ -107,6 +109,7 @@ export default function OpportunityDetail() {
   const { id = "" } = useParams();
   const { data, error, loading, reload } = useLoad(() => load(id), id);
   const [asked, setAsked] = useState(0);
+  const { data: st, reload: reloadStage } = useLoad(() => stageOne(id), `stage:${id}`);
   useTitle(data?.o.title ?? "Opportunity");
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (loading && !data) return <Loading />;
@@ -130,9 +133,18 @@ export default function OpportunityDetail() {
           <GateBadge gate={o.gate} />
         </div>
         <h1>{o.title}</h1>
+        <div className="seq-block" aria-label="Next stage">
+          <div className="seq-block-head">
+            <StageChip id={o.id} stage={st?.stage ?? "found"} />
+            {st?.dismissed_reason && <span className="muted small">Dismissed: {st.dismissed_reason}</span>}
+          </div>
+          <SeqActions opps={[{ id: o.id, title: o.title, org: org?.legal_name ?? null, evidence: signals[0]?.source_url ?? null, stage: st?.stage ?? "found" }]} onChanged={reloadStage} />
+          <SeqHint />
+          {st && <ResearchPanel research={st.research} nextAction={st.next_action} />}
+        </div>
         <div className="enrich-cta">
-          <EnrichDraft opps={[{ id: o.id, title: o.title }]} className="btn primary big" onAsked={() => setAsked((n) => n + 1)} />
-          <p className="muted small">Finds the decision makers (Apollo, work emails only) and drafts first touches for your top priority that fits. Drafts wait in Review; nothing is sent.</p>
+          <EnrichDraft opps={[{ id: o.id, title: o.title }]} className="btn small" onAsked={() => setAsked((n) => n + 1)} />
+          <p className="muted small">Only the people and first touches, without the research step. Drafts wait in Review; nothing is sent.</p>
         </div>
         <dl className="facts">
           <div><dt>Where</dt><dd>{[o.region, o.country].filter(Boolean).join(", ") || "—"}</dd></div>

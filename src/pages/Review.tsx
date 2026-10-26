@@ -13,6 +13,7 @@ export default function Review() {
   const priorities = data?.priorities ?? [];
   const active = activeInOrder(priorities);
   const pid = sp.get("priority");
+  const opp = sp.get("opp");
   const chosen = pid ? priorities.find((p) => p.id === pid) ?? null : null;
   const waiting = (id: string) => {
     const pr = data?.progress.get(id);
@@ -22,7 +23,9 @@ export default function Review() {
     <div className="review">
       <header className="focus-head">
         <h1>Review</h1>
-        <p className="focus-lede">{chosen ? `Drafts for priority ${chosen.rank}: ${chosen.title}.` : "One at a time. Priority drafts come first."}</p>
+        <p className="focus-lede">
+          {opp ? <>Drafts for one opportunity. <Link to="/review">See all drafts</Link></> : chosen ? `Drafts for priority ${chosen.rank}: ${chosen.title}.` : "One at a time. Priority drafts come first."}
+        </p>
       </header>
       {active.length > 0 && (
         <nav className="pfilter" aria-label="Which drafts">
@@ -35,7 +38,7 @@ export default function Review() {
           ))}
         </nav>
       )}
-      <Deck key={pid ?? "all"} priorities={priorities} priorityId={pid} onChanged={reload} />
+      <Deck key={opp ? `opp-${opp}` : pid ?? "all"} priorities={priorities} priorityId={opp ? null : pid} opportunityId={opp} onChanged={reload} />
     </div>
   );
 }

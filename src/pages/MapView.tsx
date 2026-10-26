@@ -25,6 +25,10 @@ import { COUNTRIES, REGION_BOUNDS, REGION_GROUPS, mandateCountries, mwOf, placeA
 import { GATES, GATE_LABEL, LINES, LINE_COLOUR, LINE_LABEL, SIDE_LABEL, lineColour, linesParam, parseLines } from "../lib/labels.ts";
 import { ExtLink, GateBadge, LineBadge, Loading, ErrorBox, useTitle } from "../components/ui.tsx";
 import { Icon } from "../components/Brand.tsx";
+import { ResearchPanel, SelectionBar, SeqActions, SeqHint, StageChip } from "../components/Sequencer.tsx";
+import { ALL_STAGES, STAGES, STAGE_COLOUR, STAGE_LABEL, stageIndex, type Stage } from "../lib/sequencer.ts";
+import { stageOne, stagesAll } from "../lib/sequencer-data.ts";
+import { shownStage, useSeqState } from "../lib/stageStore.ts";
 
 setWorkerUrl(workerUrl);
 
@@ -55,7 +59,7 @@ async function pageAll<T>(fetch: (from: number, to: number) => PromiseLike<{ dat
 }
 
 async function load() {
-  const [opps, links, mandates] = await Promise.all([
+  const [opps, links, mandates, stages] = await Promise.all([
     pageAll<MapOpp>((a, b) =>
       supabase.from("opportunities").select("id,line,side,title,country,region,credibility,gate,created_at,organisation_id,mw:specs->mw").order("id").range(a, b),
     ),
@@ -63,16 +67,18 @@ async function load() {
       supabase.from("matches").select("supply_opportunity_id,need_opportunity_id").neq("status", "rejected").order("id").range(a, b),
     ),
     supabase.from("mandates").select("id,label,line,side,criteria,kind,holder").eq("active", true).limit(500).then((r) => must(r) as MandateRow[]),
+    stagesAll(),
   ]);
   const matchCount = new Map<string, number>();
   for (const l of links) {
     for (const id of [l.supply_opportunity_id, l.need_opportunity_id]) if (id) matchCount.set(id, (matchCount.get(id) ?? 0) + 1);
   }
   const placed = placeAll(opps);
-  return { opps, placed, matchCount, mandates, unplaced: opps.length - placed.length };
+  return { opps, placed, matchCount, mandates, stages, unplaced: opps.length - placed.length };
 }
 
 const WEEK = 7 * 24 * 3600e3;
+const LIST_CAP = 100;
 const PRECISION_TEXT: Record<Precision, string> = {
   state: "Placed at the centre of its US state; the exact site is not known.",
   place: "Placed at its UK council or county.",
@@ -124,6 +130,7 @@ function baseStyle(): StyleSpecification {
 }
 
 const COLOUR: ExpressionSpecification = ["match", ["get", "line"], ...LINES.flatMap((l) => [l, LINE_COLOUR[l]]), "#9EC5B8"] as unknown as ExpressionSpecification;
+const STAGE_RING: ExpressionSpecification = ["match", ["get", "stage"], ...ALL_STAGES.flatMap((s) => [s, STAGE_COLOUR[s]]), "rgba(0,0,0,0)"] as unknown as ExpressionSpecification;
 const RADIUS: ExpressionSpecification = ["interpolate", ["linear"], ["coalesce", ["get", "mw"], 0], 0, 3.6, 10, 5, 50, 7.5, 200, 11, 1000, 16];
 
 function addDataLayers(map: MLMap) {
@@ -156,6 +163,27 @@ function addDataLayers(map: MLMap) {
       "circle-stroke-opacity": 0.95,
     },
   });
+  // Stage ring: none while only found; brighter as the opportunity moves on.
+  map.addLayer({
+    id: "opp-stage",
+    type: "circle",
+    source: "opps",
+    filter: ["all", ["!", ["has", "point_count"]], ["!=", ["get", "stage"], "found"]],
+    paint: {
+      "circle-color": "rgba(0,0,0,0)",
+      "circle-radius": ["+", RADIUS, 3.5],
+      "circle-stroke-color": STAGE_RING,
+      "circle-stroke-width": ["case", ["==", ["get", "stage"], "dismissed"], 1, 2],
+      "circle-stroke-opacity": ["case", ["==", ["get", "stage"], "dismissed"], 0.5, 0.95],
+    },
+  });
+  map.addLayer({
+    id: "opp-picked",
+    type: "circle",
+    source: "opps",
+    filter: ["all", ["!", ["has", "point_count"]], ["==", ["get", "picked"], 1]],
+    paint: { "circle-color": "rgba(0,0,0,0)", "circle-radius": ["+", RADIUS, 8], "circle-stroke-color": "#B5FFF0", "circle-stroke-width": 1.2, "circle-stroke-opacity": 0.85 },
+  });
   map.addLayer({
     id: "opp-sel",
     type: "circle",
@@ -186,6 +214,19 @@ export default function MapView() {
   const minMw = Number(sp.get("mw")) > 0 ? Number(sp.get("mw")) : null;
   const gate = (GATES as readonly string[]).includes(sp.get("gate") ?? "") ? sp.get("gate") : null;
   const showMandates = sp.get("mandates") !== "0";
+  // Stage: dismissed ones are hidden unless asked for ("all" shows everything).
+  const stageParam = sp.get("stage");
+  const stageSel: Stage | "all" | null = stageParam === "all" ? "all" : (ALL_STAGES as readonly string[]).includes(stageParam ?? "") ? (stageParam as Stage) : null;
+  const seq = useSeqState();
+  const stageOf = (id: string): Stage => shownStage(seq, id, data?.stages.get(id));
+  const [picked, setPicked] = useState<Set<string>>(() => new Set());
+  const togglePick = (id: string) => setPicked((p) => {
+    const n = new Set(p);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    return n;
+  });
+  const [legendTab, setLegendTab] = useState<"regions" | "list">("regions");
   const [wide] = useState(() => window.innerWidth >= 900);
   const selId = sp.get("o");
   const set = (k: string, v: string | null) => {
@@ -209,13 +250,16 @@ export default function MapView() {
       if (!lineSet.has(o.line)) return false;
       if (side && o.side !== side) return false;
       if (gate && o.gate !== gate) return false;
+      const st = stageOf(o.id);
+      if (stageSel === null ? st === "dismissed" : stageSel !== "all" && st !== stageSel) return false;
       if (minMw) {
         const mw = mwOf(o.mw);
         if (mw === null || mw < minMw) return false;
       }
       return true;
     });
-  }, [data, lineSet, side, gate, minMw]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, lineSet, side, gate, minMw, stageSel, seq]);
   const shown = useMemo(() => (group ? base.filter((p) => regionGroup(p.item.country) === group) : base), [base, group]);
   const byRegion = useMemo(() => {
     const m = new Map<RegionGroup, number>(REGION_GROUPS.map((g) => [g, 0]));
@@ -245,21 +289,42 @@ export default function MapView() {
           side: o.side,
           gate: o.gate,
           mw: mwOf(o.mw),
+          stage: stageOf(o.id),
+          picked: picked.has(o.id) ? 1 : 0,
           isNew: now - Date.parse(o.created_at) < WEEK ? 1 : 0,
         },
       })),
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [shown],
+    [shown, picked],
   );
+  const byStage = useMemo(() => {
+    const m = new Map<Stage, number>();
+    for (const p of shown) m.set(stageOf(p.item.id), (m.get(stageOf(p.item.id)) ?? 0) + 1);
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, seq]);
+  // The list: work in progress first, then the most credible.
+  const listed = useMemo(
+    () => [...shown]
+      .sort((a, b) => stageIndex(stageOf(b.item.id)) - stageIndex(stageOf(a.item.id)) || (b.item.credibility ?? 0) - (a.item.credibility ?? 0))
+      .slice(0, LIST_CAP),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [shown, seq],
+  );
+  const pickedOpps = useMemo(() => {
+    const byId = new Map((data?.opps ?? []).map((o) => [o.id, o]));
+    return [...picked].map((id) => byId.get(id)).filter((o): o is MapOpp => Boolean(o)).map((o) => ({ id: o.id, title: o.title, stage: stageOf(o.id) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked, data, seq]);
 
   // ---- the map itself ----
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [ready, setReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
-  const selRef = useRef<(id: string) => void>(() => {});
-  selRef.current = (id: string) => set("o", id);
+  const selRef = useRef<(id: string, shift: boolean) => void>(() => {});
+  selRef.current = (id: string, shift: boolean) => (shift ? togglePick(id) : set("o", id));
 
   useEffect(() => {
     if (!box.current) return;
@@ -297,7 +362,7 @@ export default function MapView() {
     });
     map.on("click", "opp", (e) => {
       const id = e.features?.[0]?.properties?.id;
-      if (typeof id === "string") selRef.current(id);
+      if (typeof id === "string") selRef.current(id, Boolean((e.originalEvent as MouseEvent | undefined)?.shiftKey));
     });
     for (const layer of ["opp"]) {
       map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
@@ -453,6 +518,15 @@ export default function MapView() {
             </select>
           </label>
           <label className="field">
+            <span>Stage</span>
+            <select value={stageSel ?? ""} onChange={(e) => set("stage", e.target.value || null)}>
+              <option value="">Every live stage</option>
+              {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
+              <option value="dismissed">Dismissed only</option>
+              <option value="all">All, with dismissed</option>
+            </select>
+          </label>
+          <label className="field">
             <span>Min MW</span>
             <input type="number" inputMode="numeric" min={0} step={5} value={minMw ?? ""} placeholder="Any" onChange={(e) => set("mw", e.target.value && Number(e.target.value) > 0 ? e.target.value : null)} />
           </label>
@@ -469,24 +543,69 @@ export default function MapView() {
       {loading && !data && <div className="map-hud map-note"><Loading what="Placing opportunities…" /></div>}
 
       {data && (
-        <section className="map-hud map-legend" aria-label="Counts by region">
-          <span className="eyebrow">By region</span>
-          {REGION_GROUPS.map((g) => (
-            <div key={g} className="reg">
-              <button type="button" onClick={() => set("region", group === g ? null : g)} aria-pressed={group === g}>
-                {group === g ? "▸ " : ""}{g}
-              </button>
-              <b>{fmtNumber(byRegion.get(g) ?? 0)}</b>
-            </div>
-          ))}
-          <div className="scale" aria-hidden>
-            <i style={{ width: 7, height: 7 }} /> 1 MW
-            <i style={{ width: 15, height: 15 }} /> 50
-            <i style={{ width: 26, height: 26 }} /> 500+
+        <section className={`map-hud map-legend${legendTab === "list" ? " listing" : ""}`} aria-label={legendTab === "list" ? "Opportunities on the map" : "Counts by region"}>
+          <div className="lg-tabs" role="group" aria-label="Legend or list">
+            <button type="button" aria-pressed={legendTab === "regions"} onClick={() => setLegendTab("regions")}>By region</button>
+            <button type="button" aria-pressed={legendTab === "list"} onClick={() => setLegendTab("list")}>List ({fmtNumber(shown.length)})</button>
           </div>
-          <span>Glow: found in the last 7 days</span>
-          {data.unplaced > 0 && <span>{fmtNumber(data.unplaced)} with no country are not shown</span>}
+          {legendTab === "regions" ? (
+            <>
+              {REGION_GROUPS.map((g) => (
+                <div key={g} className="reg">
+                  <button type="button" onClick={() => set("region", group === g ? null : g)} aria-pressed={group === g}>
+                    {group === g ? "▸ " : ""}{g}
+                  </button>
+                  <b>{fmtNumber(byRegion.get(g) ?? 0)}</b>
+                </div>
+              ))}
+              <div className="scale" aria-hidden>
+                <i style={{ width: 7, height: 7 }} /> 1 MW
+                <i style={{ width: 15, height: 15 }} /> 50
+                <i style={{ width: 26, height: 26 }} /> 500+
+              </div>
+              <div className="stage-key" aria-label="Ring colour by stage">
+                {STAGES.filter((s) => s !== "found").map((s) => (
+                  <span key={s} style={{ ["--s" as string]: STAGE_COLOUR[s] }}><i />{STAGE_LABEL[s]} {fmtNumber(byStage.get(s) ?? 0)}</span>
+                ))}
+              </div>
+              <span>No ring: found, not worked yet ({fmtNumber(byStage.get("found") ?? 0)})</span>
+              <span>Glow: found in the last 7 days</span>
+              {data.unplaced > 0 && <span>{fmtNumber(data.unplaced)} with no country are not shown</span>}
+            </>
+          ) : (
+            <>
+              <div className="lg-head">
+                <span>{shown.length > LIST_CAP ? `First ${LIST_CAP}: work in progress, then most credible` : "Work in progress first"}</span>
+                {picked.size > 0 && <button type="button" onClick={() => setPicked(new Set())}>Clear {picked.size}</button>}
+              </div>
+              <ul className="seq-list">
+                {listed.map(({ item: o }) => {
+                  const st = stageOf(o.id);
+                  const on = picked.has(o.id);
+                  return (
+                    <li key={o.id} className={`seq-row${on ? " on" : ""}${st === "dismissed" ? " dim" : ""}`}>
+                      <input type="checkbox" checked={on} onChange={() => togglePick(o.id)} aria-label={`Select ${o.title}`} />
+                      <div className="seq-row-main">
+                        <button type="button" className="seq-row-title" onClick={() => set("o", o.id)}>{o.title}</button>
+                        <div className="seq-row-meta">
+                          <StageChip id={o.id} stage={data.stages.get(o.id) ?? "found"} compact />
+                          <span>{LINE_LABEL[o.line]}</span>
+                        </div>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <span className="lg-note">Tick to select. Shift-click a dot on the map to add it too.</span>
+            </>
+          )}
         </section>
+      )}
+
+      {pickedOpps.length > 0 && (
+        <div className="map-hud map-bar">
+          <SelectionBar opps={pickedOpps} onClear={() => setPicked(new Set())} onChanged={reload} />
+        </div>
       )}
 
       {selected && (
@@ -494,15 +613,30 @@ export default function MapView() {
           <button type="button" className="btn ghost small close" onClick={() => set("o", null)} aria-label="Close">
             <Icon.close />
           </button>
-          <OppPanel p={selected} matches={data?.matchCount.get(selected.item.id) ?? 0} />
+          <OppPanel
+            p={selected}
+            matches={data?.matchCount.get(selected.item.id) ?? 0}
+            stage={data?.stages.get(selected.item.id) ?? "found"}
+            picked={picked.has(selected.item.id)}
+            onPick={() => togglePick(selected.item.id)}
+            onChanged={reload}
+          />
         </aside>
       )}
     </div>
   );
 }
 
-function OppPanel({ p, matches }: { p: ReturnType<typeof placeAll<MapOpp>>[number]; matches: number }) {
+function OppPanel({ p, matches, stage, picked, onPick, onChanged }: {
+  p: ReturnType<typeof placeAll<MapOpp>>[number];
+  matches: number;
+  stage: Stage;
+  picked: boolean;
+  onPick: () => void;
+  onChanged: () => void;
+}) {
   const o = p.item;
+  const { data: st } = useLoad(() => stageOne(o.id), `stage:${o.id}`);
   const { data: ev } = useLoad(
     async () =>
       await supabase
@@ -524,6 +658,15 @@ function OppPanel({ p, matches }: { p: ReturnType<typeof placeAll<MapOpp>>[numbe
         <GateBadge gate={o.gate} />
         {isNew && <span className="badge pill-good">New this week</span>}
       </div>
+      <div className="seq-block" aria-label="Next stage">
+        <div className="seq-block-head">
+          <StageChip id={o.id} stage={st?.stage ?? stage} />
+          <label className="map-pick"><input type="checkbox" checked={picked} onChange={onPick} />Select</label>
+        </div>
+        <SeqActions opps={[{ id: o.id, title: o.title, stage: st?.stage ?? stage }]} onChanged={onChanged} />
+        <SeqHint />
+      </div>
+      {st && <ResearchPanel research={st.research} nextAction={st.next_action} />}
       <dl className="facts">
         <div><dt>Where</dt><dd>{p.place.label}</dd></div>
         <div><dt>Size</dt><dd className="mono">{mw ? fmtMW(mw) : "Not stated"}</dd></div>
@@ -544,7 +687,7 @@ function OppPanel({ p, matches }: { p: ReturnType<typeof placeAll<MapOpp>>[numbe
         )}
       </div>
       <div className="action-row">
-        <Link to={`/opportunities/${o.id}`} className="btn primary small">Open opportunity</Link>
+        <Link to={`/opportunities/${o.id}`} className="btn small">Open opportunity</Link>
       </div>
     </>
   );

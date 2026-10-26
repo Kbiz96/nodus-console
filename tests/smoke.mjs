@@ -7,6 +7,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { bdLeads, bdOpps, bdQueue, dailyBrief, focusData, leadCandidates, networkFor, synthetic } from "./fixtures/synthetic.mjs";
+import { sequencerData } from "./fixtures/sequencer.mjs";
+import { sequencerFlow } from "./sequencer-smoke.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.resolve(here, "../dist");
@@ -766,6 +768,7 @@ try {
   // ---------- screenshots with fuller fake data: desktop 1440 and phone 390 ----------
   const syn = synthetic();
   const fd = focusData();
+  const seqd = sequencerData([...fx.tables.opportunities, ...syn.opportunities], fd.priorities);
   const big = {
     ...fx,
     tables: {
@@ -780,6 +783,7 @@ try {
       outreach: fd.outreach,
       crm_contacts: [...fx.tables.crm_contacts, ...fd.contacts],
       connector_runs: [{ finished_at: new Date(Date.now() - 5 * 3600e3).toISOString() }],
+      ...seqd,
     },
     counts: { ...fx.counts, sources: 41 },
   };
@@ -912,6 +916,10 @@ try {
     await p.waitForTimeout(1400);
     if (name === "phone") await p.locator(".engine-panel").scrollIntoViewIfNeeded();
     await p.screenshot({ path: path.join(shots, `engine-${name}-selected.png`) });
+
+    // The opportunity sequencer: stage chips, one-click actions, Best next and the selection bars
+    const foundId = syn.opportunities.find((o) => o.region && o.country === "US" && seqd.opportunity_stage.find((r) => r.opportunity_id === o.id)?.stage === "found")?.id;
+    await sequencerFlow(p, { base, name, shots, check, writes, foundId });
 
     await p.goto(`${base}#/matches`);
     await p.getByRole("heading", { name: "Matches", exact: true }).waitFor();

@@ -9,7 +9,11 @@ import { buildGraph, clip, curve, linkStyle, type GNode } from "../lib/graph.ts"
 import { LINES, LINE_LABEL, lineColour } from "../lib/labels.ts";
 import type { MatchCardRow } from "../lib/types.ts";
 import MatchActions from "../components/MatchActions.tsx";
-import EnrichDraft from "../components/EnrichDraft.tsx";
+import { SelectionBar, SeqActions, StageChip } from "../components/Sequencer.tsx";
+import BestNext from "../components/BestNext.tsx";
+import { ALL_STAGES, STAGES, STAGE_COLOUR, STAGE_LABEL, type SeqOpp, type Stage } from "../lib/sequencer.ts";
+import { stagesFor } from "../lib/sequencer-data.ts";
+import { shownStage, useSeqState } from "../lib/stageStore.ts";
 import { Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, PageHead, ScoreBars, StatusBadge, Swatch, useTitle } from "../components/ui.tsx";
 
 const LOAD_CAP = 400;
@@ -44,6 +48,9 @@ export default function Engine() {
   const mandate = sp.get("mandate");
   const top = TOPS.find((t) => String(t) === sp.get("top")) ?? 60;
   const selId = sp.get("m");
+  const best = sp.get("best") === "1";
+  const stageParam = sp.get("stage");
+  const stageSel = (ALL_STAGES as readonly string[]).includes(stageParam ?? "") ? (stageParam as Stage) : null;
   const set = (k: string, v: string | null) => {
     const n = new URLSearchParams(sp);
     if (v) n.set(k, v);
@@ -53,6 +60,22 @@ export default function Engine() {
   };
 
   const { data, error, loading, reload } = useLoad(() => load(view.statuses), view.key);
+  const oppIds = useMemo(() => [...new Set((data ?? []).flatMap((r) => [r.supply_id, r.need_id]).filter(Boolean))] as string[], [data]);
+  const { data: stages, reload: reloadStages } = useLoad(() => stagesFor(oppIds), `stages:${oppIds.length}:${oppIds[0] ?? ""}`);
+  const seq = useSeqState();
+  const stageOf = (id: string | null | undefined): Stage => (id ? shownStage(seq, id, stages?.get(id)) : "found");
+  const [picked, setPicked] = useState<Map<string, SeqOpp>>(() => new Map());
+  const togglePick = (o: SeqOpp) => setPicked((p) => {
+    const n = new Map(p);
+    if (n.has(o.id)) n.delete(o.id);
+    else n.set(o.id, o);
+    return n;
+  });
+  const pickedOpps = [...picked.values()].map((o) => ({ ...o, stage: stageOf(o.id) }));
+  const changed = () => {
+    reload();
+    reloadStages();
+  };
 
   const mandates = useMemo(() => {
     const m = new Map<string, { id: string; label: string; n: number }>();
@@ -69,8 +92,10 @@ export default function Engine() {
     if (line) rows = rows.filter((r) => r.line === line);
     else if (!allLines) rows = rows.filter((r) => r.line !== "critical_power");
     if (mandate) rows = rows.filter((r) => r.mandate_id === mandate);
+    if (stageSel) rows = rows.filter((r) => [r.supply_id, r.need_id].some((id) => id && stageOf(id) === stageSel));
     return rows.slice(0, top);
-  }, [data, line, allLines, mandate, top]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data, line, allLines, mandate, top, stageSel, stages, seq]);
   const graph = useMemo(() => buildGraph(shown), [shown]);
   const selected = shown.find((r) => r.id === selId) ?? (data ?? []).find((r) => r.id === selId) ?? null;
 
@@ -89,15 +114,21 @@ export default function Engine() {
         title="Engine"
         actions={
           <nav className="tabs" aria-label="Match views">
-            <Link to="/engine" className="active" aria-current="page">Engine view</Link>
+            <Link to="/engine" className={best ? undefined : "active"} aria-current={best ? undefined : "page"}>Engine view</Link>
+            <Link to="/engine?best=1" className={best ? "active" : undefined} aria-current={best ? "page" : undefined}>Best to work next</Link>
             <Link to="/matches">List</Link>
           </nav>
         }
       >
-        Mandates and needs on the left, opportunities on the right. Each line is a match the engine proposed; thicker
-        and brighter means a higher score. Pick a line to see why, then shortlist or reject it here.
+        {best
+          ? "The 20 opportunities most worth working, routed to a mandate first. Work them top-down: one click takes each to drafted."
+          : "Mandates and needs on the left, opportunities on the right. Each line is a match; thicker and brighter means a higher score. Tick opportunities on the right to work several at once."}
       </PageHead>
 
+      {best ? (
+        <BestNext />
+      ) : (
+      <>
       <div className="engine-controls">
         <div className="field">
           <span>Status</span>
@@ -128,6 +159,14 @@ export default function Engine() {
             ))}
           </select>
         </label>
+        <label className="field">
+          <span>Stage</span>
+          <select value={stageSel ?? ""} onChange={(e) => set("stage", e.target.value || null)}>
+            <option value="">Any stage</option>
+            {STAGES.map((s) => <option key={s} value={s}>{STAGE_LABEL[s]}</option>)}
+            <option value="dismissed">Dismissed</option>
+          </select>
+        </label>
         <div className="field">
           <span>Show</span>
           <div className="seg" role="group" aria-label="How many matches">
@@ -153,12 +192,13 @@ export default function Engine() {
                 <span>{fmtNumber(graph.links.length)} matches, average {fmtNumber(avg)}</span>
                 <span>Opportunities ({fmtNumber(graph.right.length)})</span>
               </div>
-              <Board graph={graph} selId={selected?.id ?? null} onPick={pick} />
+              <Board graph={graph} selId={selected?.id ?? null} onPick={pick} stageOf={stageOf} picked={picked} onToggle={togglePick} />
             </div>
             <div className="legend-lines" aria-label="Line colours">
               {LINES.map((l) => (
                 <span key={l}><i style={{ background: lineColour(l) }} />{LINE_LABEL[l]}</span>
               ))}
+              <span>Ring on the right: stage ({STAGES.filter((s) => s !== "found").map((s) => STAGE_LABEL[s].toLowerCase()).join(", ")}). Faded: dismissed.</span>
               <span><Swatch colour="var(--teal)" />Mandate card</span>
               <span>Square on the left is a mandate; a diamond is a need without one.</span>
             </div>
@@ -166,7 +206,7 @@ export default function Engine() {
 
           <aside className="engine-panel" ref={panelRef} aria-live="polite">
             {selected ? (
-              <Breakdown m={selected} onChanged={reload} onClose={() => set("m", null)} />
+              <Breakdown m={selected} onChanged={changed} onClose={() => set("m", null)} stageOf={stageOf} />
             ) : (
               <div className="card stack">
                 <span className="eyebrow">Strongest pairings</span>
@@ -185,6 +225,13 @@ export default function Engine() {
             </ol>
           </aside>
         </div>
+      )}
+      {pickedOpps.length > 0 && (
+        <div className="seq-sticky">
+          <SelectionBar opps={pickedOpps} onClear={() => setPicked(new Map())} onChanged={changed} />
+        </div>
+      )}
+      </>
       )}
     </div>
   );
@@ -206,7 +253,14 @@ function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] 
   return [ref, w];
 }
 
-function Board({ graph, selId, onPick }: { graph: ReturnType<typeof buildGraph>; selId: string | null; onPick: (id: string) => void }) {
+function Board({ graph, selId, onPick, stageOf, picked, onToggle }: {
+  graph: ReturnType<typeof buildGraph>;
+  selId: string | null;
+  onPick: (id: string) => void;
+  stageOf: (id: string) => Stage;
+  picked: Map<string, SeqOpp>;
+  onToggle: (o: SeqOpp) => void;
+}) {
   const [ref, W] = useWidth<HTMLDivElement>();
   const [hover, setHover] = useState<string | null>(null); // node key or "l:<match id>"
   const phone = W < 560;
@@ -246,9 +300,13 @@ function Board({ graph, selId, onPick }: { graph: ReturnType<typeof buildGraph>;
   const node = (n: GNode, side: "L" | "R") => {
     const yy = y(n);
     const key = `${side}${n.key}`;
-    const cls = `node node-${side.toLowerCase()}${hl ? (hl.nodes.has(key) ? " hl" : " dim") : ""}`;
+    const isOpp = n.kind === "opportunity";
+    const st = isOpp ? stageOf(n.id) : "found";
+    const pickable = side === "R" && isOpp;
+    const on = pickable && picked.has(n.id);
+    const cls = `node node-${side.toLowerCase()}${hl ? (hl.nodes.has(key) ? " hl" : " dim") : ""}${st === "dismissed" ? " dismissed" : ""}${on ? " picked" : ""}`;
     const best = graph.links.filter((k) => (side === "L" ? k.left : k.right) === n.key).sort((a, b) => b.score - a.score)[0];
-    const label = clip(n.label, maxChars);
+    const label = clip(n.label, pickable ? Math.max(6, maxChars - 3) : maxChars);
     const c = n.kind === "mandate" ? "var(--teal)" : lineColour(n.line);
     const sz = Math.min(9, 4 + Math.sqrt(n.degree) * 1.6);
     return (
@@ -257,9 +315,12 @@ function Board({ graph, selId, onPick }: { graph: ReturnType<typeof buildGraph>;
         className={cls}
         onMouseEnter={() => setHover(n.key)}
         onMouseLeave={() => setHover(null)}
-        onClick={() => best && onPick(best.match.id)}
+        onClick={(e) => {
+          if (pickable && (e.shiftKey || e.metaKey)) onToggle({ id: n.id, title: n.label });
+          else if (best) onPick(best.match.id);
+        }}
       >
-        <title>{`${n.label} — ${n.degree} match${n.degree === 1 ? "" : "es"}`}</title>
+        <title>{`${n.label} — ${n.degree} match${n.degree === 1 ? "" : "es"}${isOpp ? `, ${STAGE_LABEL[st].toLowerCase()}` : ""}`}</title>
         <rect className="hit" x={side === "L" ? 0 : xR - 6} y={yy - rowH / 2} width={labW + 16} height={rowH} />
         {side === "L" ? (
           n.kind === "mandate" ? (
@@ -268,9 +329,38 @@ function Board({ graph, selId, onPick }: { graph: ReturnType<typeof buildGraph>;
             <rect x={xL - sz / 2} y={yy - sz / 2} width={sz} height={sz} fill="none" stroke={c} strokeWidth={1.3} transform={`rotate(45 ${xL} ${yy})`} />
           )
         ) : (
-          <circle cx={xR} cy={yy} r={sz / 2 + 0.5} fill={c} />
+          <>
+            {st !== "found" && st !== "dismissed" && <circle className="stage-ring" cx={xR} cy={yy} r={sz / 2 + 3} stroke={STAGE_COLOUR[st]} />}
+            <circle cx={xR} cy={yy} r={sz / 2 + 0.5} fill={c} />
+          </>
+        )}
+        {side === "L" && isOpp && st !== "found" && st !== "dismissed" && (
+          <rect className="stage-ring" x={xL - sz / 2 - 3} y={yy - sz / 2 - 3} width={sz + 6} height={sz + 6} stroke={STAGE_COLOUR[st]} transform={n.kind === "opportunity" ? `rotate(45 ${xL} ${yy})` : undefined} />
         )}
         <text x={side === "L" ? xL - 10 : xR + 10} y={yy + 3.5}>{label}</text>
+        {pickable && (
+          <rect
+            className={`pickbox${on ? " on" : ""}`}
+            x={W - 15}
+            y={yy - 5.5}
+            width={11}
+            height={11}
+            role="checkbox"
+            aria-checked={on}
+            aria-label={`Select ${n.label}`}
+            tabIndex={0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle({ id: n.id, title: n.label });
+            }}
+            onKeyDown={(e) => {
+              if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                onToggle({ id: n.id, title: n.label });
+              }
+            }}
+          />
+        )}
       </g>
     );
   };
@@ -327,7 +417,11 @@ function Board({ graph, selId, onPick }: { graph: ReturnType<typeof buildGraph>;
 
 // ---------- the selected match ----------
 
-function Breakdown({ m, onChanged, onClose }: { m: MatchCardRow; onChanged: () => void; onClose: () => void }) {
+function Breakdown({ m, onChanged, onClose, stageOf }: { m: MatchCardRow; onChanged: () => void; onClose: () => void; stageOf: (id: string) => Stage }) {
+  const sides = [
+    m.supply_id ? { id: m.supply_id, title: m.supply_title, tag: "Supply" } : null,
+    m.need_id ? { id: m.need_id, title: m.need_title, tag: "Need" } : null,
+  ].filter((x): x is { id: string; title: string | null; tag: string } => Boolean(x));
   const ex = m.explanation ?? {};
   const why = Array.isArray(ex.why) ? ex.why : [];
   const unknowns = Array.isArray(ex.unknowns) ? ex.unknowns : [];
@@ -357,13 +451,18 @@ function Breakdown({ m, onChanged, onClose }: { m: MatchCardRow; onChanged: () =
         {m.mandate_label && (
           <li><span className="side-tag">Mandate</span><Link to={`/mandates?edit=${m.mandate_id}`}>{m.mandate_label}</Link></li>
         )}
-        {m.supply_id && (
-          <li><span className="side-tag">Supply</span><Link to={`/opportunities/${m.supply_id}`}>{m.supply_title}</Link> <GateBadge gate={m.supply_gate} /></li>
-        )}
-        {m.need_id && (
-          <li><span className="side-tag">Need</span><Link to={`/opportunities/${m.need_id}`}>{m.need_title}</Link> <GateBadge gate={m.need_gate} /></li>
-        )}
       </ul>
+      {sides.map((s) => (
+        <div key={s.id} className="side-seq" aria-label={`${s.tag}: next stage`}>
+          <div className="side-seq-head">
+            <span className="side-tag">{s.tag}</span>
+            <Link to={`/opportunities/${s.id}`}>{s.title}</Link>
+            <GateBadge gate={s.tag === "Supply" ? m.supply_gate : m.need_gate} />
+          </div>
+          <StageChip id={s.id} stage={stageOf(s.id)} />
+          <SeqActions opps={[{ id: s.id, title: s.title, stage: stageOf(s.id) }]} small onChanged={onChanged} />
+        </div>
+      ))}
       <h4>Score breakdown</h4>
       <ScoreBars scores={m.scores} />
       {learned && Number.isFinite(raw) && adj > 0 && (
@@ -404,14 +503,12 @@ function Breakdown({ m, onChanged, onClose }: { m: MatchCardRow; onChanged: () =
         </details>
       )}
       {m.status === "rejected" && m.reject_reason && <p className="muted small">Rejected: {m.reject_reason}</p>}
-      <div className="enrich-cta">
-        <EnrichDraft
-          opps={[m.supply_id ? { id: m.supply_id, title: m.supply_title } : null, m.need_id ? { id: m.need_id, title: m.need_title } : null].filter((x): x is { id: string; title: string | null } => Boolean(x))}
-          match={m.id}
-          className="btn primary"
-        />
-        <span className="muted small">Decision makers on both sides, then drafts for your approval.</span>
-      </div>
+      {sides.length > 1 && (
+        <div className="enrich-cta">
+          <SeqActions opps={sides.map((s) => ({ id: s.id, title: s.title, stage: stageOf(s.id) }))} bulk onChanged={onChanged} />
+          <span className="muted small">Both sides in one Claude chat: research, people, relationship-opener drafts. Nothing is sent until you say send.</span>
+        </div>
+      )}
       <MatchActions key={m.id} id={m.id} status={m.status} onChanged={onChanged} />
     </article>
   );

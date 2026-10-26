@@ -7,6 +7,9 @@ import { fmtDate, fmtMW, fmtNumber } from "../lib/format.ts";
 import { LINES, LINE_LABEL, SIDE_LABEL } from "../lib/labels.ts";
 import FilterBar from "../components/FilterBar.tsx";
 import { Empty, ErrorBox, GateBadge, Loading, Pager, useTitle } from "../components/ui.tsx";
+import { StageChip } from "../components/Sequencer.tsx";
+import { stagesFor } from "../lib/sequencer-data.ts";
+import type { Stage } from "../lib/sequencer.ts";
 
 const PAGE = 50;
 
@@ -32,7 +35,7 @@ async function load(f: Filters, page: number) {
     const r = await searchAll(f, 200);
     ids = r.opportunities.map((o) => o.id);
     capped = ids.length >= 200;
-    if (ids.length === 0) return { rows: [] as OppRow[], total: 0, capped };
+    if (ids.length === 0) return { rows: [] as OppRow[], total: 0, capped, stages: new Map<string, Stage>() };
   }
   let q = supabase
     .from("opportunities")
@@ -48,7 +51,9 @@ async function load(f: Filters, page: number) {
   if (d.lt) q = q.lt("created_at", d.lt);
   q = q.order("created_at", { ascending: false }).order("id");
   const { rows, count } = mustCount(await q.range((page - 1) * PAGE, page * PAGE - 1));
-  return { rows: rows as unknown as OppRow[], total: count, capped };
+  const list = rows as unknown as OppRow[];
+  const stages = await stagesFor(list.map((r) => r.id));
+  return { rows: list, total: count, capped, stages };
 }
 
 export default function Opportunities() {
@@ -104,6 +109,7 @@ export default function Opportunities() {
                   <th className="num">MW</th>
                   <th>Timing</th>
                   <th className="num">Credibility</th>
+                  <th>Stage</th>
                   <th>Step</th>
                   <th className="num">Signals</th>
                 </tr>
@@ -120,6 +126,7 @@ export default function Opportunities() {
                     <td data-label="MW" className="num">{fmtMW(o.specs?.mw)}</td>
                     <td data-label="Timing">{fmtDate(o.timing_from)}</td>
                     <td data-label="Credibility" className="num">{fmtNumber(o.credibility)}</td>
+                    <td data-label="Stage"><StageChip id={o.id} stage={data.stages.get(o.id) ?? "found"} compact /></td>
                     <td data-label="Step"><GateBadge gate={o.gate} /></td>
                     <td data-label="Signals" className="num">{o.opportunity_signals?.[0]?.count ?? 0}</td>
                   </tr>
