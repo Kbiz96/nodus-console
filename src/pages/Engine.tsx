@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
-import { MATCH_CARD_COLS, activeMandateFilter, inactiveMandateIds } from "../lib/data.ts";
+import { ENGINE_CAP, MATCH_LIST_COLS, activeMandateIds, matchExplanation } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { fmtDate, fmtNumber } from "../lib/format.ts";
 import { feedbackLine } from "../lib/feedback.ts";
@@ -17,7 +17,7 @@ import { shownStage, useSeqState } from "../lib/stageStore.ts";
 import { EngineTabs } from "../components/EngineTabs.tsx";
 import { Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, PageHead, ScoreBars, StatusBadge, Swatch, useTitle } from "../components/ui.tsx";
 
-const LOAD_CAP = 400;
+const LOAD_CAP = ENGINE_CAP;
 const TOPS = [30, 60, 120] as const;
 const VIEWS = [
   { key: "open", label: "Open", statuses: ["proposed", "shortlisted"] },
@@ -26,10 +26,10 @@ const VIEWS = [
 ] as const;
 
 async function load(statuses: readonly string[]) {
-  // Matches on switched-off mandates are hidden (they also stay out of the mandate list below).
-  const keep = activeMandateFilter(await inactiveMandateIds());
-  let q = supabase.from("v_match_cards").select(MATCH_CARD_COLS).in("status", statuses as string[]);
-  if (keep) q = q.or(keep);
+  // Only matches on active mandates, drawing columns only (the explanation loads when a match is opened).
+  const active = await activeMandateIds();
+  if (!active.length) return [] as MatchCardRow[];
+  const q = supabase.from("v_match_cards").select(MATCH_LIST_COLS).in("status", statuses as string[]).in("mandate_id", active);
   const rows = must(
     await q
       .order("total_score", { ascending: false })
@@ -418,7 +418,8 @@ function Breakdown({ m, onChanged, onClose, stageOf }: { m: MatchCardRow; onChan
     m.supply_id ? { id: m.supply_id, title: m.supply_title, tag: "Supply" } : null,
     m.need_id ? { id: m.need_id, title: m.need_title, tag: "Need" } : null,
   ].filter((x): x is { id: string; title: string | null; tag: string } => Boolean(x));
-  const ex = m.explanation ?? {};
+  const exQ = useLoad(() => (m.explanation !== undefined ? Promise.resolve(m.explanation) : matchExplanation(m.id)), `ex-${m.id}`);
+  const ex = exQ.data ?? {};
   const why = Array.isArray(ex.why) ? ex.why : [];
   const unknowns = Array.isArray(ex.unknowns) ? ex.unknowns : [];
   const evidence = Array.isArray(ex.evidence) ? ex.evidence : [];

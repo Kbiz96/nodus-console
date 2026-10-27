@@ -253,18 +253,14 @@ function base(table: string) {
   return supabase.from(table).select("id", { count: "exact", head: true });
 }
 
-/** Counts for the strip and the drafts badge. Refreshes on page change, after outreach decisions and every two minutes. */
+/** Counts for the strip and the drafts badge (head-only counts). Refreshes on page change and after outreach decisions; never on a timer. */
 function useStatus(path: string): Status {
   const [s, setS] = useState<Status>({ drafts: 0, aiQueue: null, proposed: null, sourcesLive: null, sourcesAll: null, lastRun: null, loaded: false });
   const [tick, setTick] = useState(0);
   const bump = useCallback(() => setTick((t) => t + 1), []);
   useEffect(() => {
     window.addEventListener("nodus-outreach-changed", bump);
-    const iv = window.setInterval(bump, 120_000);
-    return () => {
-      window.removeEventListener("nodus-outreach-changed", bump);
-      window.clearInterval(iv);
-    };
+    return () => window.removeEventListener("nodus-outreach-changed", bump);
   }, [bump]);
   useEffect(() => {
     let live = true;

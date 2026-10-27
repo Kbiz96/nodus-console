@@ -3,21 +3,41 @@
 import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
-import type { BoardRow, CrmContact, Deal, NetworkRow, Outreach, Priority, PriorityProgress, SearchAll } from "./types.ts";
+import type { BoardRow, CrmContact, MatchCardRow, Deal, NetworkRow, Outreach, Priority, PriorityProgress, SearchAll } from "./types.ts";
 import { appendNote, ukToday } from "./crm.ts";
 import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
 import { LEAD_COLS, decisionPatch, type Lead, type LeadStatus } from "./leads.ts";
 import { lastSentIn, sendWindowStart } from "./today.ts";
+import { cached, invalidate } from "./cache.ts";
 import { briefIsEmpty, parseBrief, type Brief, type LiveCounts, type PipelineCounts } from "./brief.ts";
 
 export const MATCH_CARD_COLS =
   "id,status,total_score,scores,thesis,explanation,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
 
+/** What the engine's graph and list draw: no explanation blob (fetched only for the match that is opened). */
+export const MATCH_LIST_COLS =
+  "id,status,total_score,scores,thesis,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
+/** Engine views never draw more than this many matches. */
+export const ENGINE_CAP = 200;
+
+/** A match's explanation, loaded when Kuran opens it. */
+export async function matchExplanation(id: string): Promise<MatchCardRow["explanation"]> {
+  const r = must(await supabase.from("v_match_cards").select("explanation").eq("id", id).maybeSingle()) as { explanation: MatchCardRow["explanation"] } | null;
+  return r?.explanation ?? null;
+}
+
 /** Mandates that are switched off (mandates.active = false). Their matches are hidden everywhere. */
 export async function inactiveMandateIds(): Promise<string[]> {
-  return (must(await supabase.from("mandates").select("id").eq("active", false).limit(1000)) as { id: string }[]).map((m) => m.id);
+  return cached("mandates:inactive", async () =>
+    (must(await supabase.from("mandates").select("id").eq("active", false).limit(1000)) as { id: string }[]).map((m) => m.id));
+}
+
+/** Mandates that are switched on (cached ten minutes): engine views draw only matches on these. */
+export async function activeMandateIds(): Promise<string[]> {
+  return cached("mandates:active", async () =>
+    (must(await supabase.from("mandates").select("id").eq("active", true).limit(1000)) as { id: string }[]).map((m) => m.id));
 }
 
 /** A PostgREST `or` filter keeping matches with no mandate or an active one; null when nothing is switched off. */
@@ -54,6 +74,7 @@ export function dateRange(f: Filters): { gte: string | null; lt: string | null }
 // ---------- writes (database functions) ----------
 
 export async function matchDecide(id: string, action: "shortlist" | "reject" | "reopen", reason?: string): Promise<void> {
+  invalidate("board");
   must(await supabase.rpc("match_decide", { p_match: id, p_action: action, p_reason: reason ?? null }));
 }
 
@@ -84,6 +105,7 @@ export async function mandateSave(m: {
   capitalCircle: boolean;
   active: boolean;
 }): Promise<string> {
+  invalidate("mandates");
   return must(
     await supabase.rpc("mandate_save", {
       p_id: m.id,
@@ -207,6 +229,7 @@ export async function mandateCardUpdate(
   id: string,
   patch: { kind: string | null; holder: string | null; confidence: string | null; to_ask: string | null; card: Record<string, unknown> },
 ): Promise<void> {
+  invalidate("mandates");
   mustChange(await supabase.from("mandates").update(patch).eq("id", id).select("id"), "The mandate card");
 }
 
@@ -220,12 +243,19 @@ export async function crmImport(p: unknown): Promise<Record<string, unknown>> {
 
 export const PRIORITY_COLS = "id,rank,title,goal,who,next_action,line,mandate_ids,deal_ids,status,notes,created_at,updated_at,target_lines,keywords,region_pattern";
 
-export async function prioritiesLoad(): Promise<{ priorities: Priority[]; progress: Map<string, PriorityProgress> }> {
+export interface PrioritiesRaw { ps: Priority[]; pr: PriorityProgress[] }
+
+/** The rows behind priorities (JSON-safe, so they can be cached). */
+export async function prioritiesRaw(): Promise<PrioritiesRaw> {
   const [ps, pr] = await Promise.all([
     supabase.from("priorities").select(PRIORITY_COLS).order("rank", { ascending: true }).limit(200).then((r) => must(r) as unknown as Priority[]),
     supabase.from("priority_progress").select("priority_id,drafts,approved,sent,replied,manual,last_sent_at").limit(500)
       .then((r) => must(r) as unknown as PriorityProgress[]),
   ]);
+  return { ps, pr };
+}
+
+export function buildPriorities({ ps, pr }: PrioritiesRaw): { priorities: Priority[]; progress: Map<string, PriorityProgress> } {
   const progress = new Map<string, PriorityProgress>();
   for (const p of pr) {
     progress.set(p.priority_id, {
@@ -238,6 +268,10 @@ export async function prioritiesLoad(): Promise<{ priorities: Priority[]; progre
     });
   }
   return { priorities: [...ps].sort((a, b) => a.rank - b.rank), progress };
+}
+
+export async function prioritiesLoad(): Promise<{ priorities: Priority[]; progress: Map<string, PriorityProgress> }> {
+  return buildPriorities(await prioritiesRaw());
 }
 
 export const SIGNED_DEAL_COLS = "id,deal,stage,heat,ncnda_signed,fee_signed,principal_verified,next_step,next_date";
@@ -419,10 +453,12 @@ export async function contactNames(ids: string[]): Promise<Map<string, { name: s
 export type PriorityPatch = Partial<Pick<Priority, "rank" | "title" | "goal" | "who" | "next_action" | "line" | "status" | "notes">>;
 
 export async function priorityUpdate(id: string, patch: PriorityPatch): Promise<void> {
+  invalidate("priorities");
   mustChange(await supabase.from("priorities").update(patch).eq("id", id).select("id"), "The priority");
 }
 
 export async function priorityInsert(p: { title: string; goal: string | null; who: string | null; next_action: string | null; rank: number }): Promise<void> {
+  invalidate("priorities");
   const rows = must(await supabase.from("priorities").insert({ ...p, status: "active" }).select("id")) as unknown[] | null;
   if (!rows || rows.length === 0) throw new Error("The priority was not added. Reload and try again.");
 }
@@ -524,15 +560,16 @@ export async function pipelineLoad(): Promise<{ deals: PipeDeal[]; contacts: Pip
 
 // ---------- the match board (Engine → Board) ----------
 
-export const BOARD_COLS = "match_id,tier,score,pair_type,need_side,supply_side,financing,why,components,mandate_code,priority_title,status,created_at";
+export const BOARD_COLS = "match_id,tier,score,pair_type,need_side,supply_side,financing,why,mandate_code,priority_title,status,created_at";
 
 /** Heaven and Strong matches from the match_board view, best first. */
 export async function boardLoad(): Promise<BoardRow[]> {
-  return must(await supabase.from("match_board").select(BOARD_COLS).order("score", { ascending: false }).limit(500)) as unknown as BoardRow[];
+  return must(await supabase.from("match_board").select(BOARD_COLS).order("score", { ascending: false }).limit(200)) as unknown as BoardRow[];
 }
 
 /** "Not a fit": rejects the match through the checked function (it records reject_reason, which rejected matches require). */
 export async function matchNotFit(id: string): Promise<void> {
+  invalidate("board");
   await matchDecide(id, "reject", "Kuran: not a fit");
 }
 

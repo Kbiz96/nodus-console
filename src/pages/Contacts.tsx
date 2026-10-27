@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { supabase, must } from "../lib/supabase.ts";
+import { supabase, must, mustCount } from "../lib/supabase.ts";
+import { ilikeOr, useDebounced } from "../lib/paging.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { contactUpdate } from "../lib/data.ts";
-import { appendNote, CONTACT_LINES, CONTACT_STAGES, fmtDay, gateScore, isDue, isOverdue, ukToday } from "../lib/crm.ts";
+import { appendNote, CONTACT_LINES, CONTACT_STAGES, fmtDay, gateScore, isOverdue, ukToday } from "../lib/crm.ts";
 import { isUuid } from "../lib/filters.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
@@ -14,48 +15,54 @@ import { Empty, ErrorBox, ExtLink, Loading, useTitle } from "../components/ui.ts
 
 const CONTACT_COLS =
   "id,name,title,company,email,linkedin,country,lines,side,category,stage,priority,channel,source,signal,first_contact,last_activity,next_follow_up,do_not_contact,notes,updated_at";
+/** What a list row draws: no notes, no links. The full record is fetched only when a contact is opened. */
+const LIST_COLS = "id,name,title,company,stage,priority,next_follow_up,do_not_contact,updated_at";
 const PRIORITIES = ["High", "Medium", "Low"];
+export const CONTACTS_PAGE = 50;
 
-async function loadContacts() {
-  return must(
-    await supabase.from("crm_contacts").select(CONTACT_COLS).order("next_follow_up", { ascending: true, nullsFirst: false }).order("name").limit(5000),
-  ) as unknown as CrmContact[];
+export interface ContactFilters { q: string; line: string; stage: string; priority: string; dueOnly: boolean; today: string }
+
+/** One page of contacts, filtered and searched on the server (never the whole table). */
+async function loadContacts(f: ContactFilters, page: number) {
+  let q = supabase.from("crm_contacts").select(LIST_COLS, { count: "exact" });
+  if (f.line) q = q.contains("lines", [f.line]);
+  if (f.stage) q = q.eq("stage", f.stage);
+  if (f.priority) q = q.eq("priority", f.priority);
+  if (f.dueOnly) q = q.lte("next_follow_up", f.today);
+  const or = ilikeOr(f.q, ["name", "company", "email", "title"]);
+  if (or) q = q.or(or);
+  const from = page * CONTACTS_PAGE;
+  const r = await q.order("next_follow_up", { ascending: true, nullsFirst: false }).order("name").range(from, from + CONTACTS_PAGE - 1);
+  const { rows, count } = mustCount(r as unknown as { data: CrmContact[] | null; count: number | null; error: null });
+  return { rows: rows as CrmContact[], count };
+}
+
+async function loadOne(id: string): Promise<CrmContact | null> {
+  return must(await supabase.from("crm_contacts").select(CONTACT_COLS).eq("id", id).maybeSingle()) as unknown as CrmContact | null;
 }
 
 export default function Contacts() {
   useTitle("Contacts");
   const [sp, setSp] = useSearchParams();
   const openId = isUuid(sp.get("id")) ? sp.get("id") : null;
-  const { data, error, loading, reload } = useLoad(loadContacts, "contacts");
   const [q, setQ] = useState("");
+  const qd = useDebounced(q, 300);
   const [line, setLine] = useState("");
   const [stage, setStage] = useState("");
   const [priority, setPriority] = useState("");
   const [dueOnly, setDueOnly] = useState(false);
+  const [page, setPage] = useState(0);
   const today = ukToday();
+  const f: ContactFilters = { q: qd, line, stage, priority, dueOnly, today };
+  const fkey = JSON.stringify(f);
+  useEffect(() => setPage(0), [fkey]);
+  const { data, error, loading, reload } = useLoad(() => loadContacts(f, page), `contacts-${fkey}-${page}`);
+  const one = useLoad(() => (openId ? loadOne(openId) : Promise.resolve(null)), `contact-one-${openId ?? ""}`);
+  const priorities = PRIORITIES;
+  const rows = data?.rows ?? [];
+  const pages = Math.max(1, Math.ceil((data?.count ?? 0) / CONTACTS_PAGE));
 
-  const priorities = useMemo(() => {
-    const s = new Set(PRIORITIES);
-    for (const c of data ?? []) if (c.priority) s.add(c.priority);
-    return [...s];
-  }, [data]);
-
-  const rows = useMemo(() => {
-    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
-    return (data ?? []).filter((c) => {
-      if (line && !(c.lines ?? []).includes(line)) return false;
-      if (stage && c.stage !== stage) return false;
-      if (priority && c.priority !== priority) return false;
-      if (dueOnly && !isDue(c.next_follow_up, today)) return false;
-      if (words.length) {
-        const hay = [c.name, c.company, c.title, c.email, c.country, c.category, c.notes].join(" ").toLowerCase();
-        if (!words.every((w) => hay.includes(w))) return false;
-      }
-      return true;
-    });
-  }, [data, q, line, stage, priority, dueOnly, today]);
-
-  const open = openId ? data?.find((c) => c.id === openId) : undefined;
+  const open = openId && one.data && one.data.id === openId ? one.data : undefined;
   const select = (id: string | null) => {
     const n = new URLSearchParams(sp);
     if (id) n.set("id", id);
@@ -110,10 +117,10 @@ export default function Contacts() {
           ) : loading && !data ? (
             <Loading />
           ) : rows.length === 0 ? (
-            <Empty>{data?.length ? "No contacts match these filters." : "No contacts yet."}</Empty>
+            <Empty>{qd || line || stage || priority || dueOnly ? "No contacts match these filters." : "No contacts yet."}</Empty>
           ) : (
             <>
-              <p className="muted small">{fmtNumber(rows.length)} of {fmtNumber(data?.length ?? 0)} contacts</p>
+              <p className="muted small">{fmtNumber(page * CONTACTS_PAGE + 1)}–{fmtNumber(page * CONTACTS_PAGE + rows.length)} of {fmtNumber(data?.count ?? 0)} contacts</p>
               <div className="table-wrap">
                 <table className="table stack-sm">
                   <thead>
@@ -126,7 +133,7 @@ export default function Contacts() {
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.slice(0, 500).map((c) => (
+                    {rows.map((c) => (
                       <tr key={c.id} className={c.id === openId ? "row-selected" : undefined}>
                         <td className="title-cell">
                           <button type="button" className="row-link" onClick={() => select(c.id)}>{c.name || "(no name)"}</button>
@@ -142,17 +149,23 @@ export default function Contacts() {
                   </tbody>
                 </table>
               </div>
-              {rows.length > 500 && <p className="muted small">Showing the first 500. Narrow the search to see the rest.</p>}
+              {pages > 1 && (
+                <div className="action-row pager">
+                  <button type="button" className="btn small" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
+                  <span className="muted small">Page {fmtNumber(page + 1)} of {fmtNumber(pages)}</span>
+                  <button type="button" className="btn small" disabled={page + 1 >= pages || loading} onClick={() => setPage((p) => p + 1)}>Next</button>
+                </div>
+              )}
             </>
           )}
         </section>
-        {openId && data && !open && (
+        {openId && !one.loading && !open && (
           <div className="card stack">
             <h2>Contact not found</h2>
             <button className="btn small ghost" type="button" onClick={() => select(null)}>Close</button>
           </div>
         )}
-        {open && <ContactPanel key={`${open.id}-${open.updated_at}`} c={open} onClose={() => select(null)} onSaved={reload} />}
+        {open && <ContactPanel key={`${open.id}-${open.updated_at}`} c={open} onClose={() => select(null)} onSaved={() => { reload(); one.reload(); }} />}
       </div>
     </div>
   );

@@ -28,7 +28,9 @@ import { ExtLink, GateBadge, LineBadge, Loading, ErrorBox, useTitle } from "../c
 import { Icon } from "../components/Brand.tsx";
 import { ResearchPanel, SelectionBar, SeqActions, SeqHint, StageChip } from "../components/Sequencer.tsx";
 import { ALL_STAGES, STAGES, STAGE_COLOUR, STAGE_LABEL, stageIndex, type Stage } from "../lib/sequencer.ts";
-import { stageOne, stagesAll } from "../lib/sequencer-data.ts";
+import { stageOne, stagesFor } from "../lib/sequencer-data.ts";
+import { ENGINE_CAP, activeMandateIds } from "../lib/data.ts";
+import { cached } from "../lib/cache.ts";
 import { shownStage, useSeqState } from "../lib/stageStore.ts";
 
 setWorkerUrl(workerUrl);
@@ -48,34 +50,42 @@ interface MapOpp {
 }
 interface MandateRow { id: string; label: string; line: string; side: string; criteria: unknown; kind: string | null; holder: string | null }
 
-const PAGE = 1000;
-async function pageAll<T>(fetch: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string; code?: string } | null }>, cap = 20000): Promise<T[]> {
-  const out: T[] = [];
-  for (let from = 0; from < cap; from += PAGE) {
-    const rows = must(await fetch(from, from + PAGE - 1)) as T[];
-    out.push(...rows);
-    if (rows.length < PAGE) break;
-  }
-  return out;
-}
 
+/**
+ * What the map draws: the open matches on active mandates (best 200), the opportunities on either side of them, the
+ * active mandates and those opportunities' stages. Never the whole opportunities table.
+ */
 async function load() {
-  const [opps, links, mandates, stages] = await Promise.all([
-    pageAll<MapOpp>((a, b) =>
-      supabase.from("opportunities").select("id,line,side,title,country,region,credibility,gate,created_at,organisation_id,mw:specs->mw").order("id").range(a, b),
-    ),
-    pageAll<{ supply_opportunity_id: string | null; need_opportunity_id: string | null }>((a, b) =>
-      supabase.from("matches").select("supply_opportunity_id,need_opportunity_id").in("status", ["proposed", "shortlisted"]).order("id").range(a, b),
-    ),
-    supabase.from("mandates").select("id,label,line,side,criteria,kind,holder").eq("active", true).limit(500).then((r) => must(r) as MandateRow[]),
-    stagesAll(),
+  const active = await activeMandateIds();
+  const [links, mandates] = await Promise.all([
+    active.length
+      ? supabase.from("matches").select("supply_opportunity_id,need_opportunity_id").in("status", ["proposed", "shortlisted"]).in("mandate_id", active)
+        .order("total_score", { ascending: false }).limit(ENGINE_CAP)
+        .then((r) => must(r) as { supply_opportunity_id: string | null; need_opportunity_id: string | null }[])
+      : Promise.resolve([] as { supply_opportunity_id: string | null; need_opportunity_id: string | null }[]),
+    cached("mandates:map", async () =>
+      must(await supabase.from("mandates").select("id,label,line,side,criteria,kind,holder").eq("active", true).limit(500)) as MandateRow[]),
   ]);
+  const ids = [...new Set(links.flatMap((l) => [l.supply_opportunity_id, l.need_opportunity_id]).filter(Boolean))] as string[];
+  const opps: MapOpp[] = [];
+  for (let i = 0; i < ids.length; i += 150) {
+    const chunk = ids.slice(i, i + 150);
+    opps.push(...(must(await supabase.from("opportunities").select("id,line,side,title,country,region,credibility,gate,created_at,organisation_id,mw:specs->mw").in("id", chunk)) as unknown as MapOpp[]));
+  }
+  const stages = await stagesFor(ids);
   const matchCount = new Map<string, number>();
   for (const l of links) {
     for (const id of [l.supply_opportunity_id, l.need_opportunity_id]) if (id) matchCount.set(id, (matchCount.get(id) ?? 0) + 1);
   }
   const placed = placeAll(opps);
   return { opps, placed, matchCount, mandates, stages, unplaced: opps.length - placed.length };
+}
+
+/** An opportunity opened by link (?o=) that is not on the map's matched set: fetched on its own. */
+async function loadExtra(id: string) {
+  const rows = must(await supabase.from("opportunities").select("id,line,side,title,country,region,credibility,gate,created_at,organisation_id,mw:specs->mw").eq("id", id).limit(1)) as unknown as MapOpp[];
+  const stages = await stagesFor(rows.map((r) => r.id));
+  return { placed: placeAll(rows)[0] ?? null, stage: stages.get(id) ?? null };
 }
 
 const WEEK = 7 * 24 * 3600e3;
@@ -471,7 +481,10 @@ export default function MapView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, group]);
 
-  const selected = selId ? data?.placed.find((p) => p.item.id === selId) ?? null : null;
+  const onMap = selId ? data?.placed.find((p) => p.item.id === selId) ?? null : null;
+  const needExtra = Boolean(selId && data && !onMap);
+  const extraQ = useLoad(() => (needExtra && selId ? loadExtra(selId) : Promise.resolve(null)), `map-extra-${needExtra ? selId : ""}`);
+  const selected = onMap ?? (needExtra ? extraQ.data?.placed ?? null : null);
 
   return (
     <div className="mapx">
@@ -618,7 +631,7 @@ export default function MapView() {
           <OppPanel
             p={selected}
             matches={data?.matchCount.get(selected.item.id) ?? 0}
-            stage={data?.stages.get(selected.item.id) ?? "found"}
+            stage={data?.stages.get(selected.item.id) ?? extraQ.data?.stage ?? "found"}
             picked={picked.has(selected.item.id)}
             onPick={() => togglePick(selected.item.id)}
             onChanged={reload}

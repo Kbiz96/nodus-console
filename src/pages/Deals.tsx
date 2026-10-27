@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { supabase, must } from "../lib/supabase.ts";
+import { supabase, must, mustCount } from "../lib/supabase.ts";
+import { ilikeOr, useDebounced } from "../lib/paging.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { dealUpdate } from "../lib/data.ts";
 import {
-  appendNote, compareDeals, DEAL_HEATS, DEAL_LINES, DEAL_STAGES, fmtDay, GATE_FIELDS, GATE_VALUES, gateScore, isClosed, isOverdue,
+  appendNote, CLOSED_STAGES, compareDeals, DEAL_HEATS, DEAL_LINES, DEAL_STAGES, fmtDay, GATE_FIELDS, GATE_VALUES, gateScore, isClosed, isOverdue,
   stageBlocker, ukToday, type DealGates,
 } from "../lib/crm.ts";
 import { isUuid } from "../lib/filters.ts";
@@ -14,22 +15,47 @@ import type { Deal } from "../lib/types.ts";
 import { DEAL_COLS } from "../components/TodayCrm.tsx";
 import { Empty, ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 
-async function loadDeals() {
-  const [deals, contacts] = await Promise.all([
-    supabase.from("deals").select(DEAL_COLS).limit(2000).then((r) => must(r) as unknown as Deal[]),
-    supabase.from("crm_contacts").select("id,name,company").limit(5000)
-      .then((r) => must(r) as unknown as { id: string; name: string | null; company: string | null }[]),
+export const DEALS_PAGE = 50;
+/** List rows: what the list draws. The panel's long fields (terms, notes) come with the opened deal. */
+const DEAL_LIST_COLS = "id,deal,contact_id,counterparty,line,heat,rank,stage,principal_verified,ncnda_signed,fee_signed,kyc_done,proof_done,next_date,next_step,updated_at";
+const closedList = `(${CLOSED_STAGES.map((s) => `"${s}"`).join(",")})`;
+
+/** One page of deals (server-side), with names only for the contacts on that page. */
+async function loadDeals(page: number, showClosed: boolean, q: string) {
+  let dq = supabase.from("deals").select(DEAL_LIST_COLS, { count: "exact" });
+  if (!showClosed) dq = dq.or(`stage.is.null,stage.not.in.${closedList}`);
+  const or = ilikeOr(q, ["deal", "counterparty", "next_step"]);
+  if (or) dq = dq.or(or);
+  const from = page * DEALS_PAGE;
+  const { rows, count } = mustCount(await dq.order("rank", { ascending: true, nullsFirst: false }).order("next_date", { ascending: true, nullsFirst: false }).range(from, from + DEALS_PAGE - 1));
+  const deals = rows as unknown as Deal[];
+  const ids = [...new Set(deals.map((d) => d.contact_id).filter(Boolean))] as string[];
+  const contacts = ids.length
+    ? (must(await supabase.from("crm_contacts").select("id,name,company").in("id", ids)) as unknown as { id: string; name: string | null; company: string | null }[])
+    : [];
+  const [{ count: closedCount }] = await Promise.all([
+    supabase.from("deals").select("id", { count: "exact", head: true }).in("stage", CLOSED_STAGES).then((r) => ({ count: r.count ?? 0 })),
   ]);
-  return { deals, contacts: new Map(contacts.map((c) => [c.id, c])) };
+  return { deals, count, closedCount, contacts: new Map(contacts.map((c) => [c.id, c])) };
+}
+
+async function loadDeal(id: string): Promise<Deal | null> {
+  return must(await supabase.from("deals").select(DEAL_COLS).eq("id", id).maybeSingle()) as unknown as Deal | null;
 }
 
 export default function Deals() {
   useTitle("Deals");
   const [sp, setSp] = useSearchParams();
   const openId = isUuid(sp.get("id")) ? sp.get("id") : null;
-  const { data, error, loading, reload } = useLoad(loadDeals, "deals");
   const [showClosed, setShowClosed] = useState(false);
+  const [q, setQ] = useState("");
+  const qd = useDebounced(q, 300);
+  const [page, setPage] = useState(0);
+  useEffect(() => setPage(0), [showClosed, qd]);
+  const { data, error, loading, reload } = useLoad(() => loadDeals(page, showClosed, qd), `deals-${page}-${showClosed}-${qd}`);
+  const one = useLoad(() => (openId ? loadDeal(openId) : Promise.resolve(null)), `deal-one-${openId ?? ""}`);
   const today = ukToday();
+  const pages = Math.max(1, Math.ceil((data?.count ?? 0) / DEALS_PAGE));
 
   const groups = useMemo(() => {
     const by = new Map<string, Deal[]>();
@@ -45,14 +71,14 @@ export default function Deals() {
       .sort((a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99));
   }, [data, showClosed]);
 
-  const open = openId ? data?.deals.find((d) => d.id === openId) : undefined;
+  const open = openId && one.data && one.data.id === openId ? one.data : undefined;
   const select = (id: string | null) => {
     const n = new URLSearchParams(sp);
     if (id) n.set("id", id);
     else n.delete("id");
     setSp(n);
   };
-  const closedCount = (data?.deals ?? []).filter((d) => isClosed(d.stage)).length;
+  const closedCount = data?.closedCount ?? 0;
 
   return (
     <div className="stack-lg">
@@ -61,6 +87,10 @@ export default function Deals() {
         <h1>Deals</h1>
         <p className="muted">Grouped by line; hot first. Gates are principal verified, NCNDA, fee agreement, KYC and proof.</p>
       </div>
+      <label className="field grow">
+        <span>Search</span>
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder="Deal, counterparty, next step" />
+      </label>
       {closedCount > 0 && (
         <label className="check">
           <input type="checkbox" checked={showClosed} onChange={(e) => setShowClosed(e.target.checked)} />
@@ -74,9 +104,9 @@ export default function Deals() {
           ) : loading && !data ? (
             <Loading />
           ) : groups.length === 0 ? (
-            <Empty>No deals yet.</Empty>
+            <Empty>{qd ? "No deals match this search." : "No deals yet."}</Empty>
           ) : (
-            groups.map(([line, ds]) => (
+            <>{groups.map(([line, ds]) => (
               <section key={line} className="stack">
                 <h2>{line} ({ds.length})</h2>
                 <ul className="list">
@@ -100,16 +130,24 @@ export default function Deals() {
                   })}
                 </ul>
               </section>
-            ))
+            ))}
+            {pages > 1 && (
+              <div className="action-row pager">
+                <button type="button" className="btn small" disabled={page === 0 || loading} onClick={() => setPage((p) => Math.max(0, p - 1))}>Previous</button>
+                <span className="muted small">Page {fmtNumber(page + 1)} of {fmtNumber(pages)}</span>
+                <button type="button" className="btn small" disabled={page + 1 >= pages || loading} onClick={() => setPage((p) => p + 1)}>Next</button>
+              </div>
+            )}
+            </>
           )}
         </div>
-        {openId && data && !open && (
+        {openId && !one.loading && !open && (
           <div className="card stack">
             <h2>Deal not found</h2>
             <button className="btn small ghost" type="button" onClick={() => select(null)}>Close</button>
           </div>
         )}
-        {open && <DealPanel key={`${open.id}-${open.updated_at}`} d={open} onClose={() => select(null)} onSaved={reload} />}
+        {open && <DealPanel key={`${open.id}-${open.updated_at}`} d={open} onClose={() => select(null)} onSaved={() => { reload(); one.reload(); }} />}
       </div>
     </div>
   );

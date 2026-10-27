@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { briefLoad, liveCountsLoad } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
+import { useCached } from "../lib/cache.ts";
 import { ukToday } from "../lib/crm.ts";
 import { greeting, ukLongDate } from "../lib/focus.ts";
 import { remember } from "../lib/calm.ts";
@@ -65,7 +66,7 @@ export default function Home() {
   useTitle("Today");
   const now = new Date();
   const day = ukToday(now);
-  const briefQ = useLoad(() => briefLoad(day), `brief-${day}`);
+  const briefQ = useCached(() => briefLoad(day), `brief:${day}`);
   const liveQ = useLoad(liveCountsLoad, "live-counts");
   const repliedQ = useLoad(loadReplied, "replied");
   const prioQ = usePriorities();

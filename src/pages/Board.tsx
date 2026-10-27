@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { boardLoad, findRequestAdd, matchDecide, matchNotFit } from "../lib/data.ts";
-import { useLoad } from "../lib/useLoad.ts";
+import { useCached } from "../lib/cache.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { BoardRow, BoardSide } from "../lib/types.ts";
@@ -62,7 +62,7 @@ export function workPrompt(r: BoardRow): string {
  */
 export default function Board() {
   useTitle("Board");
-  const { data, error, loading, reload } = useLoad(boardLoad, "board");
+  const { data, error, loading, reload } = useCached(boardLoad, "board");
   const [pair, setPair] = useState<string | null>(null);
   const [gone, setGone] = useState<Set<string>>(() => new Set());
   const [all, setAll] = useState(false);

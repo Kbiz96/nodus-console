@@ -207,7 +207,7 @@ export interface BoardRow {
   supply_side: BoardSide | null;
   financing: BoardSide | null;
   why: string | null;
-  components: Record<string, number> | null;
+  components?: Record<string, number> | null;
   mandate_code: string | null;
   priority_title: string | null;
   status: string | null;

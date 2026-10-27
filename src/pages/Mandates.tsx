@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { mandateSave } from "../lib/data.ts";
 import { criteriaSummary, isUuid } from "../lib/filters.ts";
-import { useLoad } from "../lib/useLoad.ts";
+import { useCached } from "../lib/cache.ts";
 import { fmtDate } from "../lib/format.ts";
 import { lineLabel, SIDE_LABEL } from "../lib/labels.ts";
 import { friendlyError } from "../lib/rules.ts";
@@ -45,7 +45,7 @@ export default function Mandates() {
   const [sp] = useSearchParams();
   const navigate = useNavigate();
   const editId = isUuid(sp.get("edit")) ? sp.get("edit") : null;
-  const { data, error, loading, reload } = useLoad(load, "mandates");
+  const { data, error, loading, reload } = useCached(load, "mandates:page");
   const [saved, setSaved] = useState<string | null>(null);
   const [toggleMsg, setToggleMsg] = useState<{ id: string; text: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

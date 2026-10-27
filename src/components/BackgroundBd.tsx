@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { bdCountsLoad, bdLeadsLoad } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
+import { CACHE_TTL_MS } from "../lib/cache.ts";
 import { BD_PER_EVENING, BD_PROCESS_NOW, pipelineStrip, processNowPrompt } from "../lib/brief.ts";
 import { leadQueues, newLeadCounts } from "../lib/leads.ts";
 import { AskClaude } from "./PriorityCard.tsx";
@@ -22,9 +23,14 @@ export function BackgroundBd() {
   const waiting = newLeadCounts(rows, over).get(null) ?? 0;
   const strip = pipelineStrip({ routed: countsQ.data?.routed ?? null, background: countsQ.data?.background ?? null, waiting });
   const reload = leadsQ.reload;
-  // A Claude chat may have filled the queue while the tab was away: look again when Kuran comes back.
+  // A Claude chat may have filled the queue while the tab was away: look again when Kuran comes back, at most every ten minutes.
+  const lastLoad = useRef(Date.now());
   useEffect(() => {
-    const onVis = () => { if (document.visibilityState === "visible") reload(); };
+    const onVis = () => {
+      if (document.visibilityState !== "visible" || Date.now() - lastLoad.current < CACHE_TTL_MS) return;
+      lastLoad.current = Date.now();
+      reload();
+    };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [reload]);

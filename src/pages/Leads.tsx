@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useLoad } from "../lib/useLoad.ts";
-import { prioritiesLoad, priorityDeals } from "../lib/data.ts";
+import { buildPriorities, prioritiesRaw, priorityDeals } from "../lib/data.ts";
+import { useCached } from "../lib/cache.ts";
+import type { Loaded } from "../lib/useLoad.ts";
 import { activeInOrder } from "../lib/focus.ts";
 import { groupPriorities, splitVisible } from "../lib/mandates.ts";
 import type { Priority, PriorityProgress } from "../lib/types.ts";
@@ -12,8 +14,11 @@ import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 
 const SHOW_FIRST = 3;
 
-export function usePriorities() {
-  return useLoad(prioritiesLoad, "priorities");
+/** Priorities through the ten-minute cache; reload() fetches fresh (after an edit). */
+export function usePriorities(): Loaded<ReturnType<typeof buildPriorities>> {
+  const q = useCached(prioritiesRaw, "priorities");
+  const data = useMemo(() => (q.data ? buildPriorities(q.data) : null), [q.data]);
+  return { ...q, data };
 }
 
 /**
