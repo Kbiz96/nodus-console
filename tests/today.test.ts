@@ -1,14 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SEND_IDLE_TEXT, SEND_OFF_TEXT, SEND_ON_TEXT, approvedText, lastSentIn, sendState, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
+  SEND_IDLE_TEXT, SEND_OFF_TEXT, SEND_ON_TEXT, approvedText, sendNowPrompt, lastSentIn, sendState, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
   sendStatusText, splitLinkedIn,
 } from "../src/lib/today.ts";
 import { briefAction, focusSession, briefItems, liveItems, parseBrief, sessionPrompt } from "../src/lib/brief.ts";
 
 test("send status: the brief's flag wins; without it, only the last real send is reported, never the batch times", () => {
   assert.equal(sendStatusText({ kind: "on" }), SEND_ON_TEXT);
-  assert.equal(SEND_ON_TEXT, "Approved emails go out at 09:53, 12:53 and 15:53.");
+  assert.equal(SEND_ON_TEXT, "Approved emails go out every hour at :53, 09:53 to 17:53 on weekdays.");
   assert.equal(sendStatusText({ kind: "off" }), SEND_OFF_TEXT);
   assert.equal(SEND_OFF_TEXT, "Sending is paused. Approved emails wait.");
   assert.equal(sendStatusText({ kind: "none" }), SEND_IDLE_TEXT);
@@ -23,6 +23,12 @@ test("send status: the brief's flag wins; without it, only the last real send is
   assert.equal(approvedText("Alex", { kind: "off" }, "12:53 today"), "Approved Alex. Sending is paused, so it waits.");
   assert.equal(approvedText(null, { kind: "none" }, "x"), "Approved the email. It waits for the send batch.");
   assert.ok(!approvedText("Alex", { kind: "last", at: "2026-10-27T10:55:25Z" }, "x").includes("12:53"));
+});
+
+test("Send now hands the approved ids to one Claude chat", () => {
+  const p = sendNowPrompt(["a1", "b2"]);
+  assert.ok(p.startsWith("Send now: send every outreach row with status approved, channel email and to_email set (ids: a1, b2) exactly as approved, via Gmail send_message, waiting 60s between sends, then select outreach_mark(id,'sent',thread_id) for each."));
+  assert.ok(p.endsWith("Skip anyone do_not_contact, Replied, Meeting, Declined or Bounced. Report sent/skipped counts."));
 });
 
 test("the last real send within the last weekday day", () => {

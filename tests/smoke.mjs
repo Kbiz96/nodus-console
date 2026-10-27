@@ -179,7 +179,7 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   await page.locator(".home-headline:not(.is-quiet)").waitFor();
   check((await page.locator(".home-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
   check((await page.locator(".sendline").textContent()) === "Sending is paused. Approved emails wait.", at("send_enabled false: the sending line says paused"));
-  check(await page.getByText(/go out at 09:53/).count() === 0, at("nothing on Today claims a send time while sending is paused"));
+  check(await page.getByText(/go out every hour/).count() === 0, at("nothing on Today claims a send time while sending is paused"));
   // ---- Focus session: the brief's three items, one button each ----
   await page.locator(".do-row").nth(2).waitFor();
   const doTexts = await page.locator(".do-row .do-text").allTextContents();
@@ -888,7 +888,7 @@ try {
     nb.tables.outreach = [...fx.tables.outreach, { id: "eeeeeeee-9999-4000-8000-000000000001", kind: "email", channel: "email", status: "sent", sent_at: new Date(Date.now() - 2 * 3600e3).toISOString(), to_name: "Sent Today", created_at: new Date(Date.now() - 30 * 3600e3).toISOString() }];
     await p3.reload();
     await p3.locator(".sendline:not(.is-on)", { hasText: /^Last email went out / }).waitFor();
-    check(await p3.getByText(/go out at 09:53/).count() === 0, "a lone real send never turns into a promise of the batch times");
+    check(await p3.getByText(/go out every hour/).count() === 0, "a lone real send never turns into a promise of the batch times");
     await p3.screenshot({ path: path.join(frontShots, "front-no-brief-phone.png") });
     await ctx3.close();
   }
@@ -945,19 +945,23 @@ try {
     const emails = fd.outreach.filter((o) => ["draft", "manual"].includes(o.status) && o.channel !== "linkedin").length;
     check(new RegExp(`1\\s*of\\s*${emails}$`).test((await p.locator("#approve .deck-count").textContent()) ?? ""), `Today's deck counts the ${emails} emails and leaves LinkedIn and parked out (${name})`);
     check(await p.locator("#linkedin .li-list").first().locator(".li-row").count() === 3 && (await p.locator(".li-wait-head p").textContent()) === "2 waiting for connection (send a connection note)", `LinkedIn: three connected DMs, two waiting for a connection (${name})`);
-    check(await p.locator('a[href^="https://claude.ai/new"]').count() === 1, `Today has one Claude hand-off with full data (${name})`);
+    check(await p.locator('a[href^="https://claude.ai/new"]:not(.deck-sendnow a)').count() === 1, `Today has one Claude hand-off with full data, plus Send now on the deck (${name})`);
     check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Today has no sideways scrolling with full data (${name})`);
     await p.evaluate(() => window.scrollTo(0, 0));
     await p.screenshot({ path: path.join(v3, `today-send-off-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `today-send-off-${name}-full.png`), fullPage: true });
     big.tables.daily_briefs = [dailyBrief(ukDay, true)];
+    if (!big.tables.outreach.some((o) => o.id === "eeeeeeee-7777-4000-8000-000000000001")) big.tables.outreach = [...big.tables.outreach, { id: "eeeeeeee-7777-4000-8000-000000000001", kind: "email", channel: "email", status: "approved", to_email: "approved@example.com", to_name: "Approved Person", body: "x", created_at: new Date(Date.now() - 3 * 3600e3).toISOString(), approved_at: new Date(Date.now() - 3600e3).toISOString(), sent_at: null, replied_at: null, priority_id: null }];
     await p.reload();
     await p.locator(".sendline.is-on").waitFor();
-    check((await p.locator(".sendline").textContent()) === "Approved emails go out at 09:53, 12:53 and 15:53.", `send_enabled true: the sending line gives the slots (${name})`);
+    check((await p.locator(".sendline").textContent()) === "Approved emails go out every hour at :53, 09:53 to 17:53 on weekdays.", `send_enabled true: the sending line gives the slots (${name})`);
     await p.locator("#approve .deck-card").waitFor();
     await p.locator(".mrow").first().waitFor();
     await p.waitForTimeout(500);
-    check((await p.locator("#approve .deck-hint").textContent())?.includes("Approved emails go out at 09:53"), `the deck agrees when sending is on (${name})`);
+    check((await p.locator("#approve .deck-hint").textContent())?.includes("Approved emails go out every hour"), `the deck agrees when sending is on (${name})`);
+    const sendNow = p.locator("#approve .deck-sendnow a");
+    await sendNow.waitFor();
+    check(await sendNow.count() === 1 && (await sendNow.textContent())?.includes("Send now (1 approved)") && decodeURIComponent((await sendNow.getAttribute("href")) ?? "").includes("Send now: send every outreach row with status approved"), `Send now hands the approved email to Claude (${name})`);
     await p.screenshot({ path: path.join(v3, `today-send-on-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `today-send-on-${name}-full.png`), fullPage: true });
     if (name === "phone") {

@@ -6,7 +6,8 @@ import type { Outreach, Priority } from "./types.ts";
 // ---------- send slots ----------
 
 /** The send batch runs at these UK times, Monday to Friday. */
-export const SEND_SLOTS = ["09:53", "12:53", "15:53"] as const;
+/** The send batch runs every hour at :53, 09:53 to 17:53, on weekdays. */
+export const SEND_SLOTS = ["09:53", "10:53", "11:53", "12:53", "13:53", "14:53", "15:53", "16:53", "17:53"] as const;
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const ukParts = new Intl.DateTimeFormat("en-GB", {

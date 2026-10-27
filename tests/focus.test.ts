@@ -6,11 +6,12 @@ import { DEFAULT_LINES, linesParam, parseLines } from "../src/lib/labels.ts";
 test("next send slot: the next weekday slot after now, in UK time", () => {
   // Friday 23 Oct 2026 is British Summer Time (UTC+1).
   assert.equal(nextSendSlot(new Date("2026-10-23T07:00:00Z")).label, "09:53 today"); // 08:00 UK
+  assert.equal(nextSendSlot(new Date("2026-10-23T15:00:00Z")).label, "16:53 today"); // 16:00 UK: hourly until 17:53
   assert.equal(nextSendSlot(new Date("2026-10-23T11:00:00Z")).label, "12:53 today"); // 12:00 UK
-  assert.equal(nextSendSlot(new Date("2026-10-23T11:53:00Z")).label, "15:53 today"); // 12:53 UK: that batch has started
+  assert.equal(nextSendSlot(new Date("2026-10-23T11:53:00Z")).label, "13:53 today"); // 12:53 UK: that batch has started
   assert.equal(nextSendSlot(new Date("2026-10-23T11:52:00Z")).label, "12:53 today");
-  // Friday 16:00 UK: nothing until Monday.
-  const fri = nextSendSlot(new Date("2026-10-23T15:00:00Z"));
+  // Friday 18:00 UK, after the last slot: nothing until Monday.
+  const fri = nextSendSlot(new Date("2026-10-23T17:00:00Z"));
   assert.equal(fri.label, "09:53 on Monday");
   assert.equal(fri.day, "2026-10-26");
   // Saturday and Sunday go to Monday.

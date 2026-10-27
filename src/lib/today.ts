@@ -7,7 +7,7 @@ import type { CrmContact, Deal, Outreach } from "./types.ts";
 
 // ---------- sending ----------
 
-export const SEND_ON_TEXT = "Approved emails go out at 09:53, 12:53 and 15:53.";
+export const SEND_ON_TEXT = "Approved emails go out every hour at :53, 09:53 to 17:53 on weekdays.";
 export const SEND_OFF_TEXT = "Sending is paused. Approved emails wait.";
 export const SEND_IDLE_TEXT = "No emails sent in the last day.";
 
@@ -74,6 +74,15 @@ export function approvedText(name: string | null, v: SendState | null | undefine
   if (v?.kind === "on") return `Approved ${who}. Sends at ${slotLabel}.`;
   if (v?.kind === "off") return `Approved ${who}. Sending is paused, so it waits.`;
   return `Approved ${who}. It waits for the send batch.`;
+}
+
+/** "Send now": one Claude chat that sends the approved emails through Gmail and marks them sent. The console itself never sends. */
+export function sendNowPrompt(ids: string[]): string {
+  return (
+    `Send now: send every outreach row with status approved, channel email and to_email set (ids: ${ids.join(", ")}) exactly as approved, ` +
+    "via Gmail send_message, waiting 60s between sends, then select outreach_mark(id,'sent',thread_id) for each. " +
+    "Skip anyone do_not_contact, Replied, Meeting, Declined or Bounced. Report sent/skipped counts."
+  );
 }
 
 export function isGmailUrl(url: string | null | undefined): boolean {

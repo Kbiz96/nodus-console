@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
-import { copyNow, outreachChanged, outreachDecide, outreachMarkSent, outreachUnapprove } from "../lib/data.ts";
+import { approvedEmailIds, copyNow, outreachChanged, outreachDecide, outreachMarkSent, outreachUnapprove } from "../lib/data.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, nextSendSlot, priorityPrompt } from "../lib/focus.ts";
-import { approvedText, isSendOn, sendStatusText, type SendState } from "../lib/today.ts";
+import { approvedText, isSendOn, sendNowPrompt, sendStatusText, type SendState } from "../lib/today.ts";
 import { useHandoffs } from "./handoff.ts";
 import { OUTREACH_KIND_LABEL } from "../lib/crm.ts";
 import { withoutParked } from "../lib/mandates.ts";
@@ -127,6 +127,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
       <div className="deck-empty">
         {last && <p className={last.ok ? "ok" : "error"} role="status">{last.text}</p>}
         <h3>{handled > 0 ? "All done. Nothing else is waiting for you." : filtered ? "Nothing waiting on this priority." : emailOnly ? "No emails waiting for approval." : "Nothing waiting for you."}</h3>
+        <SendNow />
         {top && handoffs && (
           <p className="muted">
             Want more? Ask Claude to find people and draft for {filtered ? "this priority" : `priority ${top.rank}`}.
@@ -162,6 +163,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
       </div>
       <div className="deck-bar" aria-hidden><span style={{ width: `${(handled / Math.max(1, total)) * 100}%` }} /></div>
       {last && <p className={`deck-last ${last.ok ? "ok" : "error"}`} role="status">{last.text}</p>}
+      <SendNow />
       {group && group.rows.length > 1 && (
         <ApproveAll
           key={`${group.key}-${group.rows.length}`}
@@ -423,6 +425,26 @@ function ApproveAll({ label, rows, sendEnabled, onApproved }: {
         <button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
       </div>
       {err && <p className="error small" role="alert">{err}</p>}
+    </div>
+  );
+}
+
+/**
+ * "Send now": the approved emails waiting for the batch go in one Claude chat that sends them through Gmail
+ * (60 s apart, skipping anyone who replied or must not be contacted) and marks them sent. Nothing sends from here.
+ */
+function SendNow() {
+  const { data, reload } = useLoad(approvedEmailIds, "approved-emails");
+  useEffect(() => {
+    window.addEventListener("nodus-outreach-changed", reload);
+    return () => window.removeEventListener("nodus-outreach-changed", reload);
+  }, [reload]);
+  const ids = data ?? [];
+  if (ids.length === 0) return null;
+  return (
+    <div className="deck-sendnow">
+      <AskClaude className="btn small" prompt={sendNowPrompt(ids)}><Icon.claude />Send now ({fmtNumber(ids.length)} approved)</AskClaude>
+      <span className="muted small">Claude sends them from Gmail, one a minute, and marks them sent.</span>
     </div>
   );
 }
