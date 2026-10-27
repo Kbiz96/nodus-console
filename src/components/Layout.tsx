@@ -13,7 +13,7 @@ interface Item { to: string; label: string; icon: IconName; end?: boolean }
 const PRIMARY: Item[] = [
   { to: "/", label: "Today", icon: "focus", end: true },
   { to: "/pipeline", label: "Pipeline", icon: "deals" },
-  { to: "/engine?best=1", label: "Engine", icon: "engine" },
+  { to: "/board", label: "Engine", icon: "engine" },
 ];
 const MORE: { name: string; items: Item[] }[] = [
   {
@@ -30,17 +30,17 @@ const MORE: { name: string; items: Item[] }[] = [
   {
     name: "Data",
     items: [
-      { to: "/today", label: "Daily report", icon: "today" },
+      { to: "/today", label: "Engine report", icon: "today" },
       { to: "/signals", label: "Signals", icon: "signals" },
       { to: "/sources", label: "Sources", icon: "sources" },
       { to: "/spend", label: "Spend", icon: "spend" },
-      { to: "/import", label: "Import", icon: "import" },
       { to: "/search", label: "Search", icon: "search" },
     ],
   },
 ];
 const ALL = [...PRIMARY, ...MORE.flatMap((g) => g.items)];
-const inMore = (path: string) => MORE.some((g) => g.items.some((i) => path === i.to || path.startsWith(`${i.to}/`))) || path === "/review";
+// Import is kept as a route (#/import) but no longer listed.
+const inMore = (path: string) => MORE.some((g) => g.items.some((i) => path === i.to || path.startsWith(`${i.to}/`))) || path === "/review" || path === "/import";
 
 const CALM_BY_DEFAULT = ["/", "/pipeline", "/review", "/priorities", "/leads"];
 
@@ -316,7 +316,7 @@ function StatusStrip({ s, calm, onCalm }: { s: Status; calm: boolean; onCalm: ()
         <span className="k">To approve</span>
         <b>{fmtNumber(s.drafts)}</b>
       </Link>
-      <Link to="/engine" className="strip-cell">
+      <Link to="/board" className="strip-cell">
         <span className="k">New matches</span>
         <b>{s.proposed === null ? "…" : fmtNumber(s.proposed)}</b>
       </Link>

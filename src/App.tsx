@@ -30,6 +30,7 @@ import Deals from "./pages/Deals.tsx";
 import Outreach from "./pages/Outreach.tsx";
 import Import from "./pages/Import.tsx";
 import Engine from "./pages/Engine.tsx";
+import Board from "./pages/Board.tsx";
 // The map library is large: load it only when the Map page is opened.
 const MapView = lazy(() => import("./pages/MapView.tsx"));
 
@@ -104,6 +105,7 @@ export default function App() {
         <Route path="/review" element={<Review />} />
         <Route path="/priorities" element={<Priorities />} />
         <Route path="/today" element={<Today />} />
+        <Route path="/board" element={<Board />} />
         <Route path="/engine" element={<Engine />} />
         <Route path="/map" element={<Suspense fallback={<Loading what="Loading the map…" />}><MapView /></Suspense>} />
         <Route path="/matches" element={<Matches />} />

@@ -181,3 +181,35 @@ export interface PriorityProgress {
   manual: number;
   last_sent_at: string | null;
 }
+
+/** One side of a pairing on the match board (match_board.need_side / supply_side / financing). */
+export interface BoardSide {
+  id?: string | null;
+  kind?: string | null;
+  name?: string | null;
+  what?: string | null;
+  size?: string | null;
+  region?: string | null;
+  country?: string | null;
+  card_kind?: string | null;
+  mandate_id?: string | null;
+  signal_date?: string | null;
+  evidence_url?: string | null;
+}
+
+/** A row of the match_board view: Heaven and Strong matches only, open, on active mandates. */
+export interface BoardRow {
+  match_id: string;
+  tier: "heaven" | "strong" | string | null;
+  score: number | string | null;
+  pair_type: string | null;
+  need_side: BoardSide | null;
+  supply_side: BoardSide | null;
+  financing: BoardSide | null;
+  why: string | null;
+  components: Record<string, number> | null;
+  mandate_code: string | null;
+  priority_title: string | null;
+  status: string | null;
+  created_at: string | null;
+}

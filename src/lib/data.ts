@@ -3,7 +3,7 @@
 import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
-import type { CrmContact, Deal, NetworkRow, Outreach, Priority, PriorityProgress, SearchAll } from "./types.ts";
+import type { BoardRow, CrmContact, Deal, NetworkRow, Outreach, Priority, PriorityProgress, SearchAll } from "./types.ts";
 import { appendNote, ukToday } from "./crm.ts";
 import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
@@ -513,4 +513,56 @@ export async function pipelineLoad(): Promise<{ deals: PipeDeal[]; contacts: Pip
   // People behind a deal give it a name and an email; they are not rows of their own unless they are warm.
   const people = missing.length ? (must(await supabase.from("crm_contacts").select(PIPE_CONTACT_COLS).in("id", missing.slice(0, 300))) as unknown as PipeContact[]) : [];
   return { deals, contacts, people };
+}
+
+// ---------- the match board (Engine → Board) ----------
+
+export const BOARD_COLS = "match_id,tier,score,pair_type,need_side,supply_side,financing,why,components,mandate_code,priority_title,status,created_at";
+
+/** Heaven and Strong matches from the match_board view, best first. */
+export async function boardLoad(): Promise<BoardRow[]> {
+  return must(await supabase.from("match_board").select(BOARD_COLS).order("score", { ascending: false }).limit(500)) as unknown as BoardRow[];
+}
+
+/** "Not a fit": rejects the match through the checked function (it records reject_reason, which rejected matches require). */
+export async function matchNotFit(id: string): Promise<void> {
+  await matchDecide(id, "reject", "Kuran: not a fit");
+}
+
+/** Queue a Find: the daily engine run (or a Claude chat via the bridge) answers it onto the board. Returns the request id. */
+export async function findRequestAdd(query: string): Promise<string> {
+  const rows = must(await supabase.from("find_requests").insert({ query: query.trim() }).select("id")) as { id: string }[];
+  const id = rows?.[0]?.id;
+  if (!id) throw new Error("The Find request was not saved. Reload and try again.");
+  return id;
+}
+
+/** Deal lines as the CRM spells them, from an engine line. */
+const DEAL_LINE: Record<string, string> = { critical_power: "Critical power", compute: "Compute", capital: "Capital", powered_land: "Powered land" };
+
+/** Move a match into the CRM as a qualified deal, next step in three days. Returns the new deal's id. */
+export async function matchToDeal(matchId: string, today = ukToday()): Promise<{ id: string; deal: string }> {
+  const m = (must(await supabase.from("v_match_cards").select("id,line,supply_title,need_title,mandate_label,explanation").eq("id", matchId).limit(1)) as {
+    line: string | null; supply_title: string | null; need_title: string | null; mandate_label: string | null; explanation: { next_step?: unknown } | null;
+  }[])[0];
+  if (!m) throw new Error("That match is no longer open. Reload and try again.");
+  const deal = [m.need_title, m.supply_title].filter(Boolean).join(" ↔ ") || m.mandate_label || "Match";
+  const next = typeof m.explanation?.next_step === "string" && m.explanation.next_step.trim()
+    ? m.explanation.next_step.trim()
+    : "Name the decision maker and send the first touch";
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 3);
+  const row = {
+    deal: deal.slice(0, 200),
+    counterparty: m.supply_title ?? m.need_title ?? null,
+    line: m.line ? DEAL_LINE[m.line] ?? null : null,
+    stage: "Qualified",
+    next_step: next,
+    next_date: d.toISOString().slice(0, 10),
+    notes: m.mandate_label ? `From engine match on ${m.mandate_label}.` : "From an engine match.",
+    extra: { match_id: matchId },
+  };
+  const rows = must(await supabase.from("deals").insert(row).select("id")) as { id: string }[];
+  if (!rows?.[0]?.id) throw new Error("The deal was not saved. Reload and try again.");
+  return { id: rows[0].id, deal: row.deal };
 }

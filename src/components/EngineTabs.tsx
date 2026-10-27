@@ -1,8 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
 
-export type EngineTab = "map" | "best" | "matches" | "list";
+export type EngineTab = "board" | "map" | "best" | "matches" | "list" | "report";
 
 const TABS: { key: EngineTab; label: string; to: string }[] = [
+  { key: "board", label: "Board", to: "/board" },
   { key: "map", label: "Map", to: "/map" },
   { key: "best", label: "Best next", to: "/engine?best=1" },
   { key: "matches", label: "Matches", to: "/engine" },
@@ -11,6 +12,7 @@ const TABS: { key: EngineTab; label: string; to: string }[] = [
 
 /** Which Engine tab a route belongs to (null when it is not an Engine page). */
 export function engineTabOf(path: string, search: string): EngineTab | null {
+  if (path === "/board") return "board";
   if (path === "/map") return "map";
   if (path === "/engine") return new URLSearchParams(search).get("best") === "1" ? "best" : "matches";
   if (path === "/matches" || path.startsWith("/matches/")) return "matches";
@@ -18,7 +20,7 @@ export function engineTabOf(path: string, search: string): EngineTab | null {
   return null;
 }
 
-/** The one tab bar shared by the Engine screen's four views: Map, Best next, Matches and List. */
+/** The one tab bar shared by the Engine screen's views: Board, Map, Best next, Matches and List. */
 export function EngineTabs({ className = "" }: { className?: string }) {
   const { pathname, search } = useLocation();
   const here = engineTabOf(pathname, search);
