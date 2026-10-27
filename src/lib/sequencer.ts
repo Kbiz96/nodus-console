@@ -162,14 +162,15 @@ const STEP_NAME: Record<Exclude<SeqAction, "work">, string> = {
 
 export const WORK_TAIL =
   'Follow the nodus-command playbook section "Opportunity sequencer": run every stage from the current one up to drafted ' +
-  "(research → people → relationship-opener outreach: email + LinkedIn connection note + DM with profile link), " +
-  "save research to opportunity_pipeline, drafts to outreach linked by opportunity_id, show me the drafts here and send the emails when I say send.";
+  "(research → people → first-touch email per OUTBOUND-PROMPT v3: capital relationship-first with the mandate range and a light close, " +
+  "power and compute direct, procurement as an RFQ; a LinkedIn DM only for 1st-degree connections, which I send myself), " +
+  "save research to opportunity_pipeline, drafts to outreach linked by opportunity_id, and show me the drafts here. Emails wait for my approval in the console.";
 
 const STEP_DETAIL: Record<Exclude<SeqAction, "work">, string> = {
   research: "diligence from the signals and evidence plus a short web check; save research {summary, what_they_need, value_exchange, angle, risks, sources} to opportunity_pipeline, or dismiss it with a reason if it is noise, then stop and tell me what you found",
   people: "1–3 decision makers, CRM first, then Apollo; add them to lead_candidates with opportunity_id, skip anyone already contacted, then stop and list them here",
-  draft: "relationship-opener outreach for the people already found: email + LinkedIn connection note + DM with profile link, no details disclosed; save drafts to outreach linked by opportunity_id, show me the drafts here and send the emails when I say send",
-  "follow-up": "a short follow-up on the first touch already sent, in the same thread and voice; save it to outreach linked by opportunity_id, show it to me here and send it when I say send",
+  draft: "first-touch email for the people already found, per OUTBOUND-PROMPT v3 (capital relationship-first with the mandate range and a light close; power and compute direct; procurement as an RFQ), no details disclosed; a LinkedIn DM only for 1st-degree connections, which I send myself; save drafts to outreach linked by opportunity_id and show me the drafts here; emails wait for my approval in the console",
+  "follow-up": "a short follow-up on the first touch already sent, in the same thread and voice; save it to outreach linked by opportunity_id and show it to me here; it waits for my approval in the console",
 };
 
 /** The "Nodus command" for one chat. `batch` says which of several chats this is. */

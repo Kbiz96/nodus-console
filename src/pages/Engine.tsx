@@ -501,7 +501,7 @@ function Breakdown({ m, onChanged, onClose, stageOf }: { m: MatchCardRow; onChan
       {sides.length > 1 && (
         <div className="enrich-cta">
           <SeqActions opps={sides.map((s) => ({ id: s.id, title: s.title, stage: stageOf(s.id) }))} bulk onChanged={onChanged} />
-          <span className="muted small">Both sides in one Claude chat: research, people, relationship-opener drafts. Nothing is sent until you say send.</span>
+          <span className="muted small">Both sides in one Claude chat: research, people, first-touch email drafts. Nothing is sent until you approve it.</span>
         </div>
       )}
       <MatchActions key={m.id} id={m.id} status={m.status} onChanged={onChanged} />

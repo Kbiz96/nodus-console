@@ -90,8 +90,10 @@ test("leads: Write outbound lists every lead with its id and source_ref", () => 
   assert.ok(q.startsWith("Nodus command (priority 1: Al-Risha phase 1: find the offtaker). Write best-in-class outbound for these 2 approved leads (lead_candidates ids below)."));
   assert.ok(q.includes("enrich with Apollo by source_ref (work email, full name, LinkedIn; report credits)"));
   assert.ok(q.includes("set each lead's status to 'drafted' and contact_id"));
-  assert.ok(q.includes("blind brief only, no client names, no fees"));
-  assert.ok(q.includes('when I reply "send", send the emails from Gmail within the daily cap and record them.'));
+  assert.ok(q.includes("Blind brief only, no client names, no fees"));
+  assert.ok(q.includes("a LinkedIn DM only if they are already a 1st-degree connection, and I send it myself"));
+  assert.ok(q.includes("OUTBOUND-PROMPT v3"));
+  assert.ok(!q.includes("when I reply"));
   assert.ok(q.includes("\n1. Steve St***t, VP Capacity, Northwind Compute (lead 11111111-0000-4000-8000-000000000001, apollo 64a1b2)"));
   assert.ok(q.includes("\n2. Amira Saleh, Head of Capacity, Example Cloud (lead 11111111-0000-4000-8000-000000000002)"));
   const link = claudeLink(q);

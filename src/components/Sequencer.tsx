@@ -44,7 +44,7 @@ function openChats(action: SeqAction, opps: SeqOpp[]) {
   const rest = chats.slice(1);
   const paste = first.full ? "" : " The list was shortened to fit; Claude looks up the rest.";
   if (rest.length === 0) {
-    toast(`With Claude: ${first.ids.length === 1 ? "1 opportunity" : `${first.ids.length} opportunities`}. Drafts come back to Review; nothing is sent until you say send.${paste}`);
+    toast(`With Claude: ${first.ids.length === 1 ? "1 opportunity" : `${first.ids.length} opportunities`}. Drafts come back for your approval; nothing is sent until you approve it.${paste}`);
     return;
   }
   toast(`Batch 1 of ${chats.length} is open (15 a chat). Open the next when you are ready.${paste}`, true, {

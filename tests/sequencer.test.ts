@@ -55,7 +55,8 @@ test("Work it asks for every stage up to drafted; single steps say run only", ()
   assert.ok(w.includes(oppLine(opp(1))) && w.includes(oppLine(opp(2))));
   assert.ok(w.endsWith(WORK_TAIL));
   assert.ok(WORK_TAIL.startsWith('Follow the nodus-command playbook section "Opportunity sequencer": run every stage from the current one up to drafted'));
-  assert.ok(WORK_TAIL.endsWith("show me the drafts here and send the emails when I say send."));
+  assert.ok(WORK_TAIL.endsWith("Emails wait for my approval in the console."));
+  assert.ok(!WORK_TAIL.includes("when I say send") && WORK_TAIL.includes("1st-degree connections"));
   const r = sequencerPrompt("research", [opp(3)]);
   assert.ok(r.startsWith("Nodus command (opportunity sequencer: Research it): run only the research step for this opportunity."));
   assert.ok(r.includes('"Opportunity sequencer": run only the research step ('));

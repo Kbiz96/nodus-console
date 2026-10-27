@@ -107,7 +107,7 @@ type PromptPriority = Pick<Priority, "rank" | "title">;
 
 /**
  * "Write outbound for N": one Claude chat that enriches each approved lead with Apollo, finds a sourced hook,
- * creates the CRM contact, drafts, and sends from Gmail only when Kuran replies "send".
+ * creates the CRM contact and drafts emails for approval in the console (LinkedIn only to 1st-degree connections, sent by Kuran).
  * With no priority (Background BD leads) the chat is told so, and each line carries the engine opportunity id.
  */
 export function writeOutboundPrompt(
@@ -122,9 +122,11 @@ export function writeOutboundPrompt(
   const head =
     `Nodus command (${scope}). Write best-in-class outbound for these ${n} approved leads (lead_candidates ids below). ` +
     "For each: enrich with Apollo by source_ref (work email, full name, LinkedIn; report credits), research one recent sourced hook about them or their firm, " +
-    "create/merge the crm_contacts record, then draft one email (and a LinkedIn DM if no work email) with the nodus-command playbook; " +
-    `blind brief only, no client names, no fees. ${save}, set each lead's status to 'drafted' and contact_id, ` +
-    "show me all drafts here, and when I reply \"send\", send the emails from Gmail within the daily cap and record them.";
+    "create/merge the crm_contacts record, then draft one email per OUTBOUND-PROMPT v3 (capital: relationship-first with the mandate range and a light close; " +
+    "power and compute: direct; procurement: RFQ). Email first: a LinkedIn DM only if they are already a 1st-degree connection, and I send it myself; " +
+    "no LinkedIn messages to people I'm not connected to. " +
+    `Blind brief only, no client names, no fees. ${save}, set each lead's status to 'drafted' and contact_id, ` +
+    "and show me the drafts here. Emails go into the console for my approval; the send batch sends only what I approve.";
   const lines = leads.map((x, i) => {
     const who = [clean(x.name) || "Unnamed lead", clean(x.title), clean(x.company)].filter(Boolean).join(", ");
     const src = (x.source ?? "").toLowerCase() || "source";
