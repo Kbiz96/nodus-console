@@ -1420,3 +1420,10 @@ details.deck-why p { margin: 0.45rem 0 0; color: var(--ink-2); font-size: 14px; 
   .board-pair:has(> :nth-child(5)) { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr); }
   .board-arrow { padding-top: 1.2rem; }
 }
+
+/* Deck: approve all for one priority (preview, then confirm) */
+.deck-all { margin: 0.2rem 0 0.6rem; }
+.deck-all.is-open { display: flex; flex-direction: column; gap: 0.5rem; }
+.deck-all.is-open p { margin: 0; }
+.deck-all-list { margin: 0; padding-left: 1.3rem; max-height: 240px; overflow-y: auto; font-size: 0.9rem; }
+.deck-all-list li { padding: 0.15rem 0; overflow-wrap: anywhere; }

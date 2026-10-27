@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
-import { copyNow, outreachChanged, outreachDecide, outreachMarkSent } from "../lib/data.ts";
+import { copyNow, outreachChanged, outreachDecide, outreachMarkSent, outreachUnapprove } from "../lib/data.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, nextSendSlot, priorityPrompt } from "../lib/focus.ts";
 import { approvedText, isSendOn, sendStatusText } from "../lib/today.ts";
 import { useHandoffs } from "./handoff.ts";
@@ -74,6 +74,25 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
   const current = queue && queue.length ? byId.get(queue[0]) ?? null : null;
   const total = handled + (queue?.length ?? 0);
 
+  // Undo: put approved emails back at the front of the queue as drafts.
+  const restore = useCallback(async (ids: string[]) => {
+    try {
+      const n = await outreachUnapprove(ids);
+      if (n === 0) {
+        toast("Too late to undo: the send batch already took it.", false);
+        return;
+      }
+      setQueue((q) => [...ids.filter((id) => !(q ?? []).includes(id)), ...(q ?? [])]);
+      setHandled((h) => Math.max(0, h - ids.length));
+      setLast(null);
+      outreachChanged();
+      onChanged?.();
+      toast(n === 1 ? "Undone. It's back as a draft." : `Undone. ${n} are back as drafts.`);
+    } catch (e) {
+      toast(friendlyError(e), false);
+    }
+  }, [onChanged]);
+
   const advance = useCallback((done: Done | null, rotate = false) => {
     setQueue((q) => (q && q.length ? (rotate ? [...q.slice(1), q[0]] : q.slice(1)) : q));
     if (!rotate) setHandled((h) => h + 1);
@@ -124,6 +143,15 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
   }
 
   const pos = handled + 1;
+  // "Approve all" covers the email drafts in the queue that serve the same priority as the card on screen.
+  const curPrio = current.priority_id ? prioById.get(current.priority_id) ?? null : null;
+  const group = curPrio && !isLinkedIn(current)
+    ? {
+        key: curPrio.id,
+        label: `priority ${curPrio.rank}: ${curPrio.title}`,
+        rows: queue.map((id) => byId.get(id)).filter((r): r is Outreach => Boolean(r && r.priority_id === curPrio.id && r.status === "draft" && !isLinkedIn(r))),
+      }
+    : null;
   return (
     <div className="deck">
       <div className="deck-top">
@@ -134,6 +162,22 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
       </div>
       <div className="deck-bar" aria-hidden><span style={{ width: `${(handled / Math.max(1, total)) * 100}%` }} /></div>
       {last && <p className={`deck-last ${last.ok ? "ok" : "error"}`} role="status">{last.text}</p>}
+      {group && group.rows.length > 1 && (
+        <ApproveAll
+          key={`${group.key}-${group.rows.length}`}
+          label={group.label}
+          rows={group.rows}
+          sendEnabled={sendEnabled}
+          onApproved={(ids, failed) => {
+            setQueue((q) => (q ?? []).filter((id) => !ids.includes(id)));
+            setHandled((h) => h + ids.length);
+            setLast({ ok: failed === 0, text: `Approved ${ids.length} for ${group.label}.${failed ? ` ${failed} could not be approved; they stay in the deck.` : ""}` });
+            outreachChanged();
+            onChanged?.();
+            toast(`Approved ${ids.length} for ${group.label}.`, true, { ms: 10000, actions: [{ label: "Undo", primary: true, run: () => void restore(ids) }] });
+          }}
+        />
+      )}
       <DeckCard
         key={current.id}
         o={current}
@@ -142,19 +186,21 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
         canLater={queue.length > 1}
         sendEnabled={sendEnabled}
         onDone={advance}
+        onUndo={restore}
         onLater={() => advance(null, true)}
       />
     </div>
   );
 }
 
-function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onLater }: {
+function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onUndo, onLater }: {
   o: Outreach;
   person: Person | null;
   priority: Priority | null;
   canLater: boolean;
   sendEnabled: boolean | null;
   onDone: (d: Done) => void;
+  onUndo: (ids: string[]) => void;
   onLater: () => void;
 }) {
   const li = isLinkedIn(o);
@@ -168,6 +214,8 @@ function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onLater 
   const [copied, setCopied] = useState(false);
   const dirty = subject !== saved.subject || body !== saved.body;
   const profile = safeHref(o.link) ?? safeHref(person?.linkedin);
+  // The person's LinkedIn profile, shown on email cards too when known (for a quick look before approving).
+  const liProfile = safeHref(person?.linkedin) ?? (/linkedin\.com\//i.test(o.link ?? "") ? safeHref(o.link) : null);
   const textRef = useRef<HTMLTextAreaElement>(null);
 
   const saveEdit = async () => {
@@ -189,7 +237,9 @@ function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onLater 
       if (dirty && !manual && what !== "skip") await saveEdit();
       if (what === "approve") {
         await outreachDecide(o.id, "approve");
-        onDone({ ok: true, text: approvedText(o.to_name, sendEnabled, nextSendSlot().label) });
+        const text = approvedText(o.to_name, sendEnabled, nextSendSlot().label);
+        onDone({ ok: true, text });
+        toast(text, true, { ms: 9000, actions: [{ label: "Undo", primary: true, run: () => onUndo([o.id]) }] });
       } else if (what === "skip") {
         await outreachDecide(o.id, "skip");
         onDone({ ok: true, text: `Skipped ${o.to_name ?? "that one"}. It won't be sent.` });
@@ -247,6 +297,9 @@ function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onLater 
         <h3>{who}</h3>
         {role && <p>{role}</p>}
         {!li && o.to_email && <p className="mono small muted">{o.to_email}</p>}
+        {liProfile && (
+          <p className="small"><a href={liProfile} target="_blank" rel="noopener noreferrer">LinkedIn profile<Icon.external /></a></p>
+        )}
       </div>
 
       {editing ? (
@@ -307,5 +360,69 @@ function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onLater 
       {li && profile && <p className="deck-hint">You send LinkedIn messages yourself. Copy, paste, send, then press Mark sent.</p>}
       {err && <p className="error" role="alert">{err}</p>}
     </article>
+  );
+}
+
+/** "Approve all N for <priority>": a preview list, then a confirm step. Nothing is approved until Confirm. */
+function ApproveAll({ label, rows, sendEnabled, onApproved }: {
+  label: string;
+  rows: Outreach[];
+  sendEnabled: boolean | null;
+  onApproved: (ids: string[], failed: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const n = rows.length;
+
+  const confirm = async () => {
+    setBusy(true);
+    setErr(null);
+    const ok: string[] = [];
+    let failed = 0;
+    let lastErr: unknown = null;
+    for (const r of rows) {
+      try {
+        await outreachDecide(r.id, "approve");
+        ok.push(r.id);
+      } catch (e) {
+        failed++;
+        lastErr = e;
+      }
+    }
+    setBusy(false);
+    if (ok.length === 0) {
+      setErr(lastErr ? friendlyError(lastErr) : "Nothing was approved.");
+      return;
+    }
+    setOpen(false);
+    onApproved(ok, failed);
+  };
+
+  if (!open) {
+    return (
+      <div className="deck-all">
+        <button type="button" className="btn small" onClick={() => setOpen(true)}>Approve all {fmtNumber(n)} for {label}</button>
+      </div>
+    );
+  }
+  return (
+    <div className="deck-all is-open card" role="group" aria-label={`Approve all ${n} for ${label}`}>
+      <p><strong>Approve these {fmtNumber(n)} emails for {label}?</strong></p>
+      <ol className="deck-all-list">
+        {rows.map((r) => (
+          <li key={r.id}>
+            <span>{r.to_name || "Unnamed recipient"}{r.company ? <span className="muted">, {r.company}</span> : null}</span>
+            {r.subject && <span className="muted small"> · {r.subject}</span>}
+          </li>
+        ))}
+      </ol>
+      <p className="muted small">{sendStatusText(sendEnabled)} You can undo straight after.</p>
+      <div className="action-row">
+        <button type="button" className="btn primary" disabled={busy} onClick={() => void confirm()}>{busy ? "Approving…" : `Confirm: approve ${fmtNumber(n)}`}</button>
+        <button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+      {err && <p className="error small" role="alert">{err}</p>}
+    </div>
   );
 }

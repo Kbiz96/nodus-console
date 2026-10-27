@@ -174,6 +174,13 @@ export async function outreachDecide(id: string, decision: "approve" | "skip" | 
   must(await supabase.rpc("outreach_decide", { p_id: id, p_decision: decision, p_subject: subject ?? null, p_body: body ?? null }));
 }
 
+/** Undo an approval: approved emails not yet sent go back to draft. Returns how many came back. */
+export async function outreachUnapprove(ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const rows = must(await supabase.from("outreach").update({ status: "draft", approved_at: null }).in("id", ids).eq("status", "approved").select("id")) as { id: string }[];
+  return rows?.length ?? 0;
+}
+
 /** Kuran has sent a LinkedIn item himself. The one direct status update the console makes. */
 /** Bring a parked draft back into the review deck (status parked -> draft). RLS allows Kuran's login. */
 export async function outreachUnpark(id: string): Promise<void> {
