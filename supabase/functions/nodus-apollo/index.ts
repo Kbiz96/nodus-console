@@ -14,6 +14,8 @@ import {
   type Criteria, type Icp, type Org, type Rails, type SeqKey, DEFAULT_TITLES, classTags, defaultIcp, headcountRanges, icpTitles, lineOf,
   nextLabel, parseOpportunity, regionLocations, scoreResult,
 } from "./rails.ts";
+import { toHtml } from "./html.ts";
+import { activity, credits } from "./activity.ts";
 
 const APOLLO = "https://api.apollo.io/api/v1";
 const FROM_ACCOUNT_ID = "69970533e4a92b0011f30d43";
@@ -74,11 +76,8 @@ async function apollo(key: string, path: string, opts: { method?: string; body?:
 
 // ---------- helpers ----------
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-/** Plain text to Apollo's HTML: one <p> per paragraph, single line breaks kept. */
-export function toHtml(text: string): string {
-  return text.trim().split(/\n\s*\n/).map((p) => `<p>${esc(p.trim()).replace(/\n/g, "<br>")}</p>`).join("");
-}
+/** Plain text to Apollo's HTML (paragraphs; links only in the closing signature): see html.ts. */
+export { toHtml };
 /** Follow-ups written by the drafter into the note as "FU1: ..." and "FU2: ...". Nothing is invented when they are absent. */
 export function followUps(note: string | null): { fu1: string | null; fu2: string | null } {
   const n = note ?? "";
@@ -449,6 +448,8 @@ Deno.serve(async (req) => {
     if (b.action === "enrich") return key ? await enrich(db, key, b) : noKey();
     if (b.action === "draft") return fail("use_claude", { message: "Drafting is done by Claude: use Draft, which opens a Nodus chat." });
     if (b.action === "opportunity") return await opportunity(db, key, b, email);
+    if (b.action === "activity") return key ? json(200, await activity(db, (p, o) => apollo(key, p, o))) : noKey();
+    if (b.action === "credits") return key ? json(200, await credits((p, o) => apollo(key, p, o))) : noKey();
     return fail("unknown_action");
   } catch (e) {
     if (e instanceof ApolloError) return fail(e.reason, { status: e.status, message: e.message });
