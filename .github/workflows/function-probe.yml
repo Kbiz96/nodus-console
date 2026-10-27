@@ -1,7 +1,11 @@
 # Manual check that the nodus-apollo Edge Function refuses callers without a login.
 # It never sends a key or a session: it only proves the door is locked (expects HTTP 401).
 name: Probe nodus-apollo
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ["supabase/functions/**", ".github/workflows/function-probe.yml"]
 permissions:
   contents: read
 jobs:
