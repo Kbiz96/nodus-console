@@ -58,7 +58,7 @@ export default function TodayCrm() {
           {drafts.total + manual.length === 0
             ? "Nothing waiting for approval."
             : `${fmtNumber(drafts.total)} ${drafts.total === 1 ? "draft" : "drafts"} and ${fmtNumber(manual.length)} LinkedIn ${manual.length === 1 ? "message" : "messages"} wait for you. `}
-          <Link to="/">Approve on Today</Link>
+          <Link to="/">Send on Today</Link>
         </p>
       </section>
 

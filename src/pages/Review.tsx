@@ -18,6 +18,7 @@ export default function Review() {
   const active = activeInOrder(priorities);
   const pid = sp.get("priority");
   const opp = sp.get("opp");
+  const old = sp.get("old") === "1";
   const chosen = pid ? priorities.find((p) => p.id === pid) ?? null : null;
   const waiting = (id: string) => {
     const pr = data?.progress.get(id);
@@ -28,7 +29,7 @@ export default function Review() {
       <header className="focus-head">
         <h1>Review</h1>
         <p className="focus-lede">
-          {opp ? <>Drafts for one opportunity. <Link to="/review">See all drafts</Link></> : chosen ? `Drafts for priority ${chosen.rank}: ${chosen.title}.` : "Every draft, email and LinkedIn, one at a time. Most days Today is enough."}
+          {old ? <>Older approved emails (written before the 27 Oct style): send, hold or skip each one. <Link to="/review">See all drafts</Link></> : opp ? <>Drafts for one opportunity. <Link to="/review">See all drafts</Link></> : chosen ? `Drafts for priority ${chosen.rank}: ${chosen.title}.` : "Every draft, email and LinkedIn, one at a time. Most days Today is enough."}
         </p>
       </header>
       {active.length > 0 && (
@@ -42,7 +43,7 @@ export default function Review() {
           ))}
         </nav>
       )}
-      <Deck key={opp ? `opp-${opp}` : pid ?? "all"} priorities={priorities} priorityId={opp ? null : pid} opportunityId={opp} onChanged={reload} sendEnabled={sendState(lastSent ?? null)} />
+      <Deck key={old ? "old" : opp ? `opp-${opp}` : pid ?? "all"} oldApproved={old} priorities={priorities} priorityId={opp || old ? null : pid} opportunityId={old ? null : opp} onChanged={reload} sendEnabled={sendState(lastSent ?? null)} />
     </div>
   );
 }

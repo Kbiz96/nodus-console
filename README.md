@@ -4,9 +4,10 @@ The private web console for the Nodus Origination Engine. Three screens run the 
 **Engine**. Everything else (Leads desk, Mandates, Priorities, Contacts, Deals, Outreach log, Daily report, Signals,
 Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works but is not in the nav.
 
-- **Today** (`#/`, the home screen): the brief's headline and an honest sending line (from
-  `daily_briefs.body.send_enabled`: true says "Approved emails go out at 09:53, 12:53 and 15:53."; false or missing says
-  sending is paused and nothing claims a send time). **Focus session**: the brief's `do_now`, three at most, one button
+- **Today** (`#/`, the home screen): the brief's headline and the sending line: "Emails go out when you press Send
+  (via Apollo)." There are no scheduled sends. Below the Send deck: **Older approved (pre-27 Oct style)** (Review or
+  Park all; never sent automatically) and **Sent & replies** (the `activity` action of `nodus-apollo`: replied first with
+  Reply in Gmail and Move to deal, then bounced, then in sequence). **Focus session**: the brief's `do_now`, three at most, one button
   each (a Gmail link shows "Open draft in Gmail"); items with no link share one "Hand these to Claude" chat, the only
   Claude hand-off on the screen. **Replies owed**: `daily_briefs.body.replies` (`who`, `company`, `summary`,
   `gmail_draft_url`) with "Open draft in Gmail", plus replies logged in `outreach` that the brief does not mention
@@ -29,10 +30,11 @@ Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works
   has a collapsed "Parked (n)" list with **Bring back**, which sets the draft back to `draft`.
 - **Enrich & draft** (opportunity page, Engine panel, Matches): asks for decision makers through `enrich_request` (the
   same path as Enrich) and opens Claude to enrich with Apollo and draft first touches for approval.
-- **Review** (`#/review`, `#/review?priority=<id>`): the deck on its own. Email: Approve (through
-  `outreach_decide`; the send batch sends at 09:53, 12:53 or 15:53 UK on weekdays only while sending is on), Skip, Edit, Later. LinkedIn: Copy &
-  open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: A, S, E, C, L. There is no Undo,
-  because the database has no way to take back an approval or a skip.
+- **Review** (`#/review`, `#/review?priority=<id>`, `#/review?old=1` for the older approved queue): the deck on its
+  own. Email: Send (Apollo, now), Hold (parked with a reason: second contact at same firm, live account, later, other),
+  Edit, Skip, Later; grouped by mandate with counts; one email per company (the higher-fit draft first; Send holds the
+  others). LinkedIn: Copy & open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: S send,
+  H hold, E edit, K skip, C copy, L later. Hold has Undo.
 - **Priorities** (`#/priorities`): edit, reorder, pause, mark done, add. Writes go straight to `priorities` (RLS).
 - The old cockpit is the **Daily report** at `#/today` (approvals point to Today). Map and Engine leave critical power out by default; the line toggle brings it back
   (`?lines=all` on Map, `?line=all` on Engine).

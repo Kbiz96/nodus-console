@@ -4,6 +4,8 @@ import { OUTREACH_KIND_LABEL, OUTREACH_STATUS_LABEL } from "../lib/crm.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { Outreach } from "../lib/types.ts";
+import { apolloFailText, apolloSend } from "../lib/apollo.ts";
+import { sentText } from "../lib/today.ts";
 import { ExtLink } from "./ui.tsx";
 
 export function OutreachMeta({ o }: { o: Outreach }) {
@@ -22,7 +24,7 @@ function who(o: Outreach): string {
   return [o.to_name, o.company].filter(Boolean).join(" · ") || "Unnamed recipient";
 }
 
-/** A draft waiting for Kuran: edit, approve, save or skip. Every decision goes through outreach_decide. */
+/** A draft waiting for Kuran: email Send (via Apollo, now), LinkedIn ready to send by hand; edit or skip through outreach_decide. */
 export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void }) {
   const isEmail = o.channel === "email" || o.kind === "email" || o.kind === "followup";
   const [subject, setSubject] = useState(o.subject ?? "");
@@ -32,16 +34,22 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const dirty = subject !== saved.subject || body !== saved.body;
 
-  const run = async (what: "approve" | "edit" | "skip") => {
+  const run = async (what: "approve" | "edit" | "skip" | "send") => {
     setBusy(what);
     setMsg(null);
     try {
-      if (what === "approve" && dirty) await outreachDecide(o.id, "edit", isEmail ? subject : o.subject, body);
+      if ((what === "approve" || what === "send") && dirty) await outreachDecide(o.id, "edit", isEmail ? subject : o.subject, body);
+      if (what === "send") {
+        const r = await apolloSend(o.id);
+        setMsg(r.ok ? { ok: true, text: sentText(o.to_name, r.sequence?.name ?? null) } : { ok: false, text: apolloFailText(r).text });
+        if (r.ok) { outreachChanged(); onChanged(); }
+        return;
+      }
       await outreachDecide(o.id, what, what === "edit" ? (isEmail ? subject : o.subject) : null, what === "edit" ? body : null);
       if (what !== "skip") setSaved({ subject, body });
       setMsg({
         ok: true,
-        text: what === "approve" ? (isEmail ? "Saved for later. It goes out when you press Send on Today (via Apollo)." : "Approved. It is now under LinkedIn to send.") : what === "edit" ? "Edit saved." : "Skipped.",
+        text: what === "approve" ? "Ready. It is now under LinkedIn to send." : what === "edit" ? "Edit saved." : "Skipped.",
       });
       outreachChanged();
       onChanged();
@@ -71,9 +79,15 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
       </label>
       {o.note && <p className="note">{o.note}</p>}
       <div className="action-row">
-        <button className="btn primary small" type="button" disabled={Boolean(busy)} onClick={() => run("approve")}>
-          {busy === "approve" ? "Approving…" : dirty ? "Save and approve" : "Approve"}
-        </button>
+        {isEmail ? (
+          <button className="btn primary small" type="button" disabled={Boolean(busy) || !o.to_email} onClick={() => run("send")}>
+            {busy === "send" ? "Sending…" : dirty ? "Save & send" : "Send"}
+          </button>
+        ) : (
+          <button className="btn primary small" type="button" disabled={Boolean(busy)} onClick={() => run("approve")}>
+            {busy === "approve" ? "Saving…" : "Ready to send on LinkedIn"}
+          </button>
+        )}
         <button className="btn small" type="button" disabled={Boolean(busy) || !dirty} onClick={() => run("edit")}>
           {busy === "edit" ? "Saving…" : "Save edit"}
         </button>

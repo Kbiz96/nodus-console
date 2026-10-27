@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SEND_TEXT, savedText, sentText, lastSentIn, sendState, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
+  SEND_TEXT, sentText, lastSentIn, sendState, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
   sendStatusText, splitLinkedIn,
 } from "../src/lib/today.ts";
 import { briefAction, focusSession, briefItems, liveItems, parseBrief, sessionPrompt } from "../src/lib/brief.ts";
@@ -14,7 +14,6 @@ test("sending line: press Send, Apollo does the rest; plus the last real send wh
   assert.deepEqual(sendState("2026-10-27T10:55:25Z"), { kind: "last", at: "2026-10-27T10:55:25Z" });
   assert.deepEqual(sendState(null), { kind: "none" });
   assert.ok(!sendStatusText({ kind: "none" }).includes(":53"));
-  assert.equal(savedText("Alex"), "Saved Alex for later. Press Send when you're ready.");
   assert.equal(sentText("Alex", "Capital / investors"), "Sent Alex via Apollo (Capital / investors sequence).");
 });
 

@@ -48,11 +48,6 @@ export function sendStatusText(v: SendState | null | undefined): string {
   return SEND_TEXT;
 }
 
-/** What "Save for later" says afterwards. */
-export function savedText(name: string | null): string {
-  return `Saved ${name || "the email"} for later. Press Send when you're ready.`;
-}
-
 /** What Send says afterwards. */
 export function sentText(name: string | null, sequence: string | null): string {
   return `Sent ${name || "the email"} via Apollo${sequence ? ` (${sequence} sequence)` : ""}.`;

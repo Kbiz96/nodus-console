@@ -90,7 +90,7 @@ test("do now: urgent live items first, the brief keeps a slot, never more than t
   assert.equal(live[0].text, "Answer 2 replies");
   assert.equal(live[2].detail, "11 on signed mandates, 5 from background BD.");
   const { now, overflow } = mergeDoNow(brief3, live);
-  assert.deepEqual(now.map((d) => d.text), ["Answer 2 replies", "Approve 4 drafts", "B1"]);
+  assert.deepEqual(now.map((d) => d.text), ["Answer 2 replies", "Send 4 emails", "B1"]);
   assert.deepEqual(overflow.map((d) => d.text), ["B2", "B3", "Approve or dismiss 16 new leads"]);
 });
 
