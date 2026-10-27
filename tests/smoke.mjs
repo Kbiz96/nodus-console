@@ -22,6 +22,8 @@ fx.tables.lead_candidates = [...leadCandidates(), ...bdLeads()];
 const ukDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 fx.tables.daily_briefs = [dailyBrief(ukDay)];
 fx.tables.bd_queue = bdQueue();
+// One open question for Kuran on Today (crm_actions, category 'question'), tied to a deal.
+fx.tables.crm_actions = [...(fx.tables.crm_actions ?? []), { id: "9a9a9a9a-0000-4000-8000-000000000001", title: "Which ticket range should the Gulf teaser quote?", detail: "Two investors asked; the card says $100-300m.", category: "question", status: "open", deal_id: "dddddddd-1111-4000-8000-000000000001", contact_id: null, priority: null, due: null, link: null, focus_rank: null, source: "claude", created_at: "2026-10-27T08:00:00Z", updated_at: "2026-10-27T08:00:00Z" }];
 fx.bdOpps = bdOpps();
 // The front page's full screenshots (desktop and phone) can go to their own folder.
 const frontShots = process.env.FRONT_SHOTS || process.env.FOCUS_SHOTS || process.argv[2] || process.env.SHOTS_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.smoke");
@@ -85,7 +87,7 @@ function fake(approved, data = fx) {
       if (body.action === "enrich") return json(200, { ok: true, email: "jo.bloggs@example-infra.com", email_status: "verified", contact_id: "cc1", credits: 1 });
       if (body.action === "find") {
         const people = fnState.missingKey ? [] : [
-          { apollo_id: "ap1", name: "Jo Bloggs", title: "Partner", company: "Example Infra Partners", domain: "example-infra.com", linkedin: null, country: "United Kingdom", has_email: true, size_evidence: "320 employees (Apollo)", why: "Partner at Example Infra Partners; investor organisation (Apollo keyword tags)", known: false, lead_candidate_id: "lc1" },
+          { apollo_id: "ap1", name: "Jo Bloggs", title: "Partner", company: "Example Infra Partners", domain: "example-infra.com", linkedin: null, country: "United Kingdom", has_email: true, size_evidence: "320 employees (Apollo)", why: "Partner at Example Infra Partners; rails met: title: Partner, type: infrastructure fund", known: false, lead_candidate_id: "lc1", rails: ["title: Partner", "type: infrastructure fund"], fit_score: 75 },
           { apollo_id: "ap2", name: "Sam Example", title: "Managing Director", company: "Example Family Office", domain: null, linkedin: null, country: null, has_email: null, size_evidence: null, why: "Managing Director at Example Family Office", known: false, lead_candidate_id: "lc2" },
         ];
         return json(200, {
@@ -93,6 +95,14 @@ function fake(approved, data = fx) {
           engine: [{ match_id: "bbbbbbbb-0000-4000-8000-000000000002", tier: "heaven", score: 91, pair_type: "capital", why: "Example Energy needs a convertible note ↔ Example Credit Partners has private credit", mandate_code: "C36", need_side: { name: "Example Energy" }, supply_side: { name: "Example Credit Partners" } }],
           people, note: fnState.missingKey ? null : "Apollo has no fund-size filter: $100m+ is screened by organisation type and scale.",
           ...(fnState.missingKey ? { apollo_skipped: "missing_api_key", message: "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY" } : {}),
+        });
+      }
+      if (body.action === "opportunity") {
+        return json(200, {
+          ok: true, created: { id: "m9", label: "C37 investor mandate (capital)", kind: "investor_mandate", line: "capital", criteria: { fund_min_usd: 2e9, min_ticket_usd: 20e6, region_pref: ["GB"] } },
+          find: { ok: true, mandate: { id: "m9", label: "C37 investor mandate (capital)", approach: "relationship first; mandate range; blind summary" }, engine: [], added: 1, excluded: 1, skipped: 0, parsed: {},
+            note: "1 dropped for the card's exclude/disqualify rules.",
+            people: [{ apollo_id: "ap9", name: "Alex Developer", title: "Head of Development", company: "Example Sites Ltd", domain: null, linkedin: null, country: "United Kingdom", has_email: true, size_evidence: "unverified: no size data in Apollo", why: "Head of Development at Example Sites Ltd", known: false, lead_candidate_id: "lc9", rails: ["title: Head of Development", "region: United Kingdom"], fit_score: 75 }] },
         });
       }
       return json(200, { ok: false, reason: "unknown_action" });
@@ -201,8 +211,20 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(/Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".home-dateline").textContent()) ?? ""), at("Today greets Kuran"));
   await page.locator(".home-headline:not(.is-quiet)").waitFor();
   check((await page.locator(".home-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
-  check((await page.locator(".sendline").textContent()) === "Emails send when you press Send, via Apollo.", at("the sending line says Send sends via Apollo"));
+  check((await page.locator(".sendline").textContent()) === "Emails go out when you press Send (via Apollo).", at("the sending line says Send sends via Apollo"));
   check(await page.getByText(/go out every hour/).count() === 0, at("nothing on Today promises batch times"));
+  // ---- Questions for you: open crm_actions questions, answered inline ----
+  await page.getByRole("heading", { name: "Questions for you" }).waitFor();
+  const qRow = page.locator(".question-row").first();
+  await qRow.waitFor();
+  check((await qRow.textContent())?.includes("Which ticket range should the Gulf teaser quote?"), at("Today lists the open question"));
+  const wQ = writes.length;
+  await qRow.getByLabel("Your answer").fill("Quote $100-300m");
+  await qRow.getByRole("button", { name: "Save answer" }).click();
+  await page.locator(".question-row").first().waitFor({ state: "detached" }).catch(() => {});
+  const qw = writes.slice(wQ);
+  check(qw.some((w) => w.table === "crm_actions" && w.method === "PATCH" && w.body.status === "done" && /Kuran \(\d{1,2} \w{3} \d{4}\): Quote \$100-300m$/.test(w.body.detail) && w.url.includes("9a9a9a9a-0000-4000-8000-000000000001")), at("saving an answer closes the question and appends the answer"));
+  check(qw.some((w) => w.table === "deals" && w.method === "PATCH" && String(w.body.notes).includes("Kuran (") && w.url.includes("dddddddd-1111-4000-8000-000000000001")), at("the answer also goes on the deal's notes"));
   // ---- Focus session: the brief's three items, one button each ----
   await page.locator(".do-row").nth(2).waitFor();
   const doTexts = await page.locator(".do-row .do-text").allTextContents();
@@ -241,7 +263,7 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(await why.locator("summary").textContent() === "Why this person" && await why.getAttribute("open") === null, at("the research card is folded under Why this person"));
   await why.locator("summary").click();
   check((await why.locator("p").textContent())?.startsWith("Head of Energy at Example Power"), at("Why this person opens the research card"));
-  check((await deck.locator(".deck-hint").textContent())?.includes("Emails send when you press Send, via Apollo."), at("the deck says Send sends via Apollo"));
+  check((await deck.locator(".deck-hint").textContent())?.includes("Emails go out when you press Send (via Apollo)."), at("the deck says Send sends via Apollo"));
   for (const b of ["Send", "Save for later", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
   const fnBefore = fnCalls.length;
   await deck.getByRole("button", { name: "Send", exact: true }).click();
@@ -905,7 +927,7 @@ try {
     check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), `with no brief, Today says when it arrives (got "${note}")`);
     const liveTexts = (await p3.locator(".do-row .do-text").allTextContents()).join("|");
     check(/^Answer 1 reply\|Approve \d+ drafts?\|Approve or dismiss 18 new leads$/.test(liveTexts), `with no brief, live items stand in for the focus session (${liveTexts})`);
-    check((await p3.locator(".sendline").textContent()) === "Emails send when you press Send, via Apollo.", "with no brief, the sending line still says Send sends via Apollo");
+    check((await p3.locator(".sendline").textContent()) === "Emails go out when you press Send (via Apollo).", "with no brief, the sending line still says Send sends via Apollo");
     check(await p3.locator(".home-calls").count() === 0, "with no brief, there is no calls or digest panel");
     // No brief but one email went out: the line reports that send, without promising the batch times.
     nb.tables.outreach = [...fx.tables.outreach, { id: "eeeeeeee-9999-4000-8000-000000000001", kind: "email", channel: "email", status: "sent", sent_at: new Date(Date.now() - 2 * 3600e3).toISOString(), to_name: "Sent Today", created_at: new Date(Date.now() - 30 * 3600e3).toISOString() }];
@@ -976,11 +998,11 @@ try {
     if (!big.tables.outreach.some((o) => o.id === "eeeeeeee-7777-4000-8000-000000000001")) big.tables.outreach = [...big.tables.outreach, { id: "eeeeeeee-7777-4000-8000-000000000001", kind: "email", channel: "email", status: "approved", to_email: "approved@example.com", to_name: "Approved Person", body: "x", created_at: new Date(Date.now() - 3 * 3600e3).toISOString(), approved_at: new Date(Date.now() - 3600e3).toISOString(), sent_at: null, replied_at: null, priority_id: null }];
     await p.reload();
     await p.locator(".sendline").waitFor();
-    check((await p.locator(".sendline").textContent())?.startsWith("Emails send when you press Send, via Apollo."), `the sending line says Send sends via Apollo (${name})`);
+    check((await p.locator(".sendline").textContent())?.startsWith("Emails go out when you press Send (via Apollo)."), `the sending line says Send sends via Apollo (${name})`);
     await p.locator("#approve .deck-card").waitFor();
     await p.locator(".mrow").first().waitFor();
     await p.waitForTimeout(500);
-    check((await p.locator("#approve .deck-hint").textContent())?.includes("Emails send when you press Send"), `the deck agrees (${name})`);
+    check((await p.locator("#approve .deck-hint").textContent())?.includes("Emails go out when you press Send"), `the deck agrees (${name})`);
     const sendSaved = p.locator("#approve .deck-sendnow button");
     await sendSaved.first().waitFor();
     check((await sendSaved.first().textContent())?.includes("Send 1 saved for later"), `emails saved for later can be sent in one go (${name})`);
@@ -1138,6 +1160,17 @@ try {
     await p.getByText("jo.bloggs@example-infra.com").waitFor();
     check(fnCalls.some((c) => c.action === "enrich" && c.lead_candidate_id === "lc1"), `Enrich reveals one email through the function (${name})`);
     check(await p.locator(".find-results").getByRole("link", { name: "Draft" }).count() === 2, `each Apollo person has Draft (${name})`);
+    check((await p.locator(".find-results .find-rails").first().textContent())?.includes("type: infrastructure fund") && (await p.locator(".find-results").textContent())?.includes("Fit 75"), `Find shows the rails met and the fit score (${name})`);
+    check(decodeURIComponent((await p.locator(".find-results").getByRole("link", { name: "Draft" }).first().getAttribute("href")) ?? "").includes("research the person and their firm"), `Draft hands Claude the research-then-write prompt (${name})`);
+    // New opportunity: a sentence becomes a mandate card, then Find runs on it.
+    await p.getByLabel("Describe a new opportunity").fill("Family office with $2bn AUM looking to invest $20m tickets in UK data centres");
+    await p.getByRole("button", { name: "Add and find" }).click();
+    await p.locator(".board-opp .find-results .find-row").first().waitFor();
+    check(fnCalls.some((c) => c.action === "opportunity" && c.text.startsWith("Family office with $2bn AUM")), `New opportunity calls the function with the sentence (${name})`);
+    check((await p.locator(".board-opp").textContent())?.includes("Added C37 investor mandate (capital): Investor mandate, $20m+ tickets, fund $2bn+, GB."), `New opportunity says which card it made and what it parsed (${name})`);
+    check((await p.locator(".board-opp").textContent())?.includes("Alex Developer") && (await p.locator(".board-opp").textContent())?.includes("1 dropped for the card's exclude/disqualify rules."), `New opportunity shows Find's results for the new card (${name})`);
+    check(decodeURIComponent((await p.locator(".board-opp").getByRole("link", { name: "Draft" }).first().getAttribute("href")) ?? "").includes("icp.approach: relationship first; mandate range; blind summary"), `Draft carries the new card's approach (${name})`);
+    await p.screenshot({ path: path.join(v3, `engine-board-opportunity-${name}.png`), fullPage: true });
     await p.waitForTimeout(300);
     await p.screenshot({ path: path.join(v3, `engine-board-find-${name}.png`), fullPage: true });
     fnState.missingKey = true;

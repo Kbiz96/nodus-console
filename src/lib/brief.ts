@@ -18,7 +18,7 @@ export interface Brief {
   digest: string[];
   rep: { q: string; a: string } | null;
   replies: BriefReply[];
-  /** Whether the send batch is switched on: true or false as the brief says, null when the brief does not say. */
+  /** The brief's old send flag (from when sending was scheduled); kept for older briefs, no longer shown. */
   send_enabled: boolean | null;
 }
 

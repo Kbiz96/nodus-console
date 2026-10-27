@@ -574,7 +574,7 @@ export async function matchToDeal(matchId: string, today = ukToday()): Promise<{
   return { id: rows[0].id, deal: row.deal };
 }
 
-/** Approved emails waiting for the send batch (status approved, channel email, an address set): what "Send now" covers. */
+/** Emails saved for later (status approved, channel email, an address set): what "Send N saved for later" covers. */
 export async function approvedEmailIds(): Promise<string[]> {
   const res = await supabase.from("outreach").select("id").eq("status", "approved").eq("channel", "email").not("to_email", "is", null).order("approved_at", { ascending: true }).limit(200);
   if (res.error) return [];

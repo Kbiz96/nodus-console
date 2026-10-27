@@ -126,7 +126,7 @@ export function writeOutboundPrompt(
     "power and compute: direct; procurement: RFQ). Email first: a LinkedIn DM only if they are already a 1st-degree connection, and I send it myself; " +
     "no LinkedIn messages to people I'm not connected to. " +
     `Blind brief only, no client names, no fees. ${save}, set each lead's status to 'drafted' and contact_id, ` +
-    "and show me the drafts here. Emails go into the console for my approval; the send batch sends only what I approve.";
+    "and show me the drafts here. Emails go into the console for my approval; nothing goes out until I press Send.";
   const lines = leads.map((x, i) => {
     const who = [clean(x.name) || "Unnamed lead", clean(x.title), clean(x.company)].filter(Boolean).join(", ");
     const src = (x.source ?? "").toLowerCase() || "source";

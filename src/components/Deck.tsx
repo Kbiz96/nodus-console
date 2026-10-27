@@ -40,7 +40,7 @@ async function load(priorityId: string | null, opportunityId: string | null = nu
 type Done = { text: string; ok: boolean };
 
 /**
- * One draft at a time. Email: approve (the send batch sends it at the next slot when sending is on), skip or edit.
+ * One draft at a time. Email: Send (Apollo sends it now, with the follow-ups), save for later, skip or edit.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
  * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `sendEnabled`: the brief's flag, or failing that what last went out.
  */
@@ -80,7 +80,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
     try {
       const n = await outreachUnapprove(ids);
       if (n === 0) {
-        toast("Too late to undo: the send batch already took it.", false);
+        toast("Too late to undo: it has already been sent.", false);
         return;
       }
       setQueue((q) => [...ids.filter((id) => !(q ?? []).includes(id)), ...(q ?? [])]);

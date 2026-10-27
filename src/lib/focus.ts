@@ -1,62 +1,7 @@
-// Focus screen rules: the next send slot, the order of the review deck and the Claude prompts.
+// Focus screen rules: the order of the review deck and the Claude prompts.
 // Pure functions only, so they can be unit-tested.
 
 import type { Outreach, Priority } from "./types.ts";
-
-// ---------- send slots ----------
-
-/** The send batch runs at these UK times, Monday to Friday. */
-/** The send batch runs every hour at :53, 09:53 to 17:53, on weekdays. */
-export const SEND_SLOTS = ["09:53", "10:53", "11:53", "12:53", "13:53", "14:53", "15:53", "16:53", "17:53"] as const;
-
-const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-const ukParts = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/London",
-  year: "numeric",
-  month: "numeric",
-  day: "numeric",
-  hour: "2-digit",
-  minute: "2-digit",
-  hourCycle: "h23",
-});
-
-function partsOf(d: Date): { y: number; m: number; d: number; mins: number } {
-  const p: Record<string, string> = {};
-  for (const { type, value } of ukParts.formatToParts(d)) p[type] = value;
-  return { y: Number(p.year), m: Number(p.month), d: Number(p.day), mins: Number(p.hour) * 60 + Number(p.minute) };
-}
-
-export interface SendSlot {
-  /** UK date of the slot, "YYYY-MM-DD". */
-  day: string;
-  /** UK clock time, "12:53". */
-  time: string;
-  /** "today", "tomorrow" or a weekday name. */
-  when: string;
-  /** "12:53 today", "09:53 on Monday". */
-  label: string;
-}
-
-/**
- * The next time the send batch will pick up an approved email: the first weekday slot strictly after `now`
- * (UK time). A slot that is starting this very minute is treated as gone, because the batch may already have run.
- */
-export function nextSendSlot(now = new Date()): SendSlot {
-  const t = partsOf(now);
-  for (let add = 0; add < 8; add++) {
-    const day = new Date(Date.UTC(t.y, t.m - 1, t.d + add));
-    const dow = day.getUTCDay();
-    if (dow === 0 || dow === 6) continue;
-    for (const s of SEND_SLOTS) {
-      const [h, m] = s.split(":").map(Number);
-      if (add === 0 && h * 60 + m <= t.mins) continue;
-      const when = add === 0 ? "today" : add === 1 ? "tomorrow" : WEEKDAYS[dow];
-      const iso = day.toISOString().slice(0, 10);
-      return { day: iso, time: s, when, label: add <= 1 ? `${s} ${when}` : `${s} on ${when}` };
-    }
-  }
-  throw new Error("no send slot within a week"); // cannot happen: every week has weekdays
-}
 
 // ---------- the review deck ----------
 

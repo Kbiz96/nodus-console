@@ -8,7 +8,7 @@ import type { CrmContact, Deal, Outreach } from "./types.ts";
 // ---------- sending ----------
 
 /** Sending is one press: Send on a draft puts it into the right Apollo sequence, and Apollo sends it and the follow-ups. */
-export const SEND_TEXT = "Emails send when you press Send, via Apollo.";
+export const SEND_TEXT = "Emails go out when you press Send (via Apollo).";
 
 /** What the console knows about recent sending: when the last email went out (last weekday day), or nothing. */
 export type SendState = { kind: "last"; at: string } | { kind: "none" };
@@ -263,4 +263,19 @@ export function repliesOwed(brief: BriefReplyLike[], logged: RepliedRow[]): Owed
     });
   }
   return out;
+}
+
+// ---------- questions for Kuran ----------
+
+/** crm_actions the engine or Claude raised as a question for Kuran: category 'question' (any case), not done or dismissed. */
+export function isOpenQuestion(a: { category: string | null; status: string | null }): boolean {
+  return (a.category ?? "").trim().toLowerCase() === "question" && !["done", "dismissed"].includes((a.status ?? "").toLowerCase());
+}
+
+/** Appends Kuran's answer to a detail or notes field: "…\nKuran (27 Oct 2026): <answer>". */
+export function withAnswer(existing: string | null | undefined, answer: string, now = new Date()): string {
+  const day = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", day: "numeric", month: "short", year: "numeric" }).format(now);
+  const line = `Kuran (${day}): ${answer.trim()}`;
+  const prev = (existing ?? "").trimEnd();
+  return prev ? `${prev}\n${line}` : line;
 }

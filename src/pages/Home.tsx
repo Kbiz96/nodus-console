@@ -15,6 +15,7 @@ import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { AskClaude } from "../components/PriorityCard.tsx";
 import Deck from "../components/Deck.tsx";
 import { LinkedInPanel } from "../components/LinkedInPanel.tsx";
+import { Questions } from "../components/Questions.tsx";
 import { MandateRows } from "../components/MandateRows.tsx";
 import { HandoffContext } from "../components/handoff.ts";
 import { Icon } from "../components/Brand.tsx";
@@ -57,7 +58,7 @@ async function loadReplied(): Promise<Outreach[]> {
 /**
  * Today: the front page and the only screen Kuran needs most days. Top to bottom: the brief's headline and the
  * honest sending line, the focus session (three things at most), replies owed (answers already drafted in Gmail),
- * one email at a time to approve, LinkedIn he can send now, and the signed mandates as one-line rows.
+ * questions left for him (answered inline), one email at a time to approve, LinkedIn he can send now, and the signed mandates as one-line rows.
  * There is one Claude hand-off on this screen: the focus session's items that have no link of their own.
  */
 export default function Home() {
@@ -144,6 +145,14 @@ export default function Home() {
         </section>
 
         <div className="home-side">
+          <section className="home-questions" id="questions" aria-labelledby="h-questions">
+            <div className="today-sec">
+              <h2 id="h-questions" tabIndex={-1}>Questions for you</h2>
+              <span className="muted small">Answer here; it goes on the record</span>
+            </div>
+            <Questions />
+          </section>
+
           <section className="home-replies" id="replies" aria-labelledby="h-replies">
             <div className="today-sec">
               <h2 id="h-replies" tabIndex={-1}>Replies owed</h2>

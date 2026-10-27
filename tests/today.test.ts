@@ -7,10 +7,10 @@ import {
 import { briefAction, focusSession, briefItems, liveItems, parseBrief, sessionPrompt } from "../src/lib/brief.ts";
 
 test("sending line: press Send, Apollo does the rest; plus the last real send when known", () => {
-  assert.equal(SEND_TEXT, "Emails send when you press Send, via Apollo.");
+  assert.equal(SEND_TEXT, "Emails go out when you press Send (via Apollo).");
   assert.equal(sendStatusText(null), SEND_TEXT);
   assert.equal(sendStatusText({ kind: "none" }), SEND_TEXT);
-  assert.equal(sendStatusText({ kind: "last", at: "2026-10-27T10:55:25Z" }), "Emails send when you press Send, via Apollo. Last email went out Tue 27 Oct, 10:55.");
+  assert.equal(sendStatusText({ kind: "last", at: "2026-10-27T10:55:25Z" }), "Emails go out when you press Send (via Apollo). Last email went out Tue 27 Oct, 10:55.");
   assert.deepEqual(sendState("2026-10-27T10:55:25Z"), { kind: "last", at: "2026-10-27T10:55:25Z" });
   assert.deepEqual(sendState(null), { kind: "none" });
   assert.ok(!sendStatusText({ kind: "none" }).includes(":53"));
@@ -128,4 +128,15 @@ test("replies owed: the brief's list with Gmail drafts, plus logged replies it d
   assert.equal(owed[2].url, "https://mail.google.com/mail/u/0/#search/alex%40example.com");
   assert.equal(owed[2].summary, "Replied to “Capacity in Jordan”");
   assert.deepEqual(repliesOwed([], []), []);
+});
+
+test("questions for Kuran: open 'question' actions only; answers append with the UK date", async () => {
+  const { isOpenQuestion, withAnswer } = await import("../src/lib/today.ts");
+  assert.equal(isOpenQuestion({ category: "Question", status: "open" }), true);
+  assert.equal(isOpenQuestion({ category: "question", status: null }), true);
+  assert.equal(isOpenQuestion({ category: "question", status: "done" }), false);
+  assert.equal(isOpenQuestion({ category: "Follow-up", status: "open" }), false);
+  const at = new Date("2026-10-27T12:00:00Z");
+  assert.equal(withAnswer("Which ticket range?", "  $100-300m ", at), "Which ticket range?\nKuran (27 Oct 2026): $100-300m");
+  assert.equal(withAnswer(null, "Yes", at), "Kuran (27 Oct 2026): Yes");
 });

@@ -1,32 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { activeInOrder, deckOrder, greeting, isLinkedIn, nextSendSlot, priorityPrompt, replyPrompt, ukLongDate } from "../src/lib/focus.ts";
+import { activeInOrder, deckOrder, greeting, isLinkedIn, priorityPrompt, replyPrompt, ukLongDate } from "../src/lib/focus.ts";
 import { DEFAULT_LINES, linesParam, parseLines } from "../src/lib/labels.ts";
-
-test("next send slot: the next weekday slot after now, in UK time", () => {
-  // Friday 23 Oct 2026 is British Summer Time (UTC+1).
-  assert.equal(nextSendSlot(new Date("2026-10-23T07:00:00Z")).label, "09:53 today"); // 08:00 UK
-  assert.equal(nextSendSlot(new Date("2026-10-23T15:00:00Z")).label, "16:53 today"); // 16:00 UK: hourly until 17:53
-  assert.equal(nextSendSlot(new Date("2026-10-23T11:00:00Z")).label, "12:53 today"); // 12:00 UK
-  assert.equal(nextSendSlot(new Date("2026-10-23T11:53:00Z")).label, "13:53 today"); // 12:53 UK: that batch has started
-  assert.equal(nextSendSlot(new Date("2026-10-23T11:52:00Z")).label, "12:53 today");
-  // Friday 18:00 UK, after the last slot: nothing until Monday.
-  const fri = nextSendSlot(new Date("2026-10-23T17:00:00Z"));
-  assert.equal(fri.label, "09:53 on Monday");
-  assert.equal(fri.day, "2026-10-26");
-  // Saturday and Sunday go to Monday.
-  assert.equal(nextSendSlot(new Date("2026-10-24T10:00:00Z")).label, "09:53 on Monday");
-  // Sunday 25 Oct: the clocks go back. Late Sunday evening UK is still Sunday.
-  assert.equal(nextSendSlot(new Date("2026-10-25T22:30:00Z")).label, "09:53 tomorrow");
-  // Monday 26 Oct, GMT again: 09:30 UTC is 09:30 UK, so 09:53 is still to come.
-  assert.equal(nextSendSlot(new Date("2026-10-26T09:30:00Z")).label, "09:53 today");
-  // Tuesday evening after the last slot: Wednesday morning.
-  const tue = nextSendSlot(new Date("2026-10-27T18:00:00Z"));
-  assert.equal(tue.label, "09:53 tomorrow");
-  assert.equal(tue.time, "09:53");
-  // 23:30 UTC in summer is already the next UK day.
-  assert.equal(nextSendSlot(new Date("2026-06-30T23:30:00Z")).label, "09:53 today"); // Wed 1 Jul 00:30 UK
-});
 
 const P = [
   { id: "p1", rank: 1, status: "active" as const, title: "Al-Risha" },
