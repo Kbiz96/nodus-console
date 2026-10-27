@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { supabase, must, mustCount } from "../lib/supabase.ts";
-import { MATCH_CARD_COLS } from "../lib/data.ts";
+import { MATCH_CARD_COLS, activeMandateFilter, inactiveMandateIds } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { fmtDateTime, fmtGBP, fmtNumber, ukDayStartIso, ukMonthStart } from "../lib/format.ts";
 import { LINES, LINE_LABEL } from "../lib/labels.ts";
@@ -36,11 +36,10 @@ async function load() {
     q = line ? q.eq("line", line) : q.is("line", null);
     return q.then((r) => mustCount(r).count);
   };
+  const keep = activeMandateFilter(await inactiveMandateIds());
+  const matchQ = supabase.from("v_match_cards").select(MATCH_CARD_COLS).in("status", ["proposed", "shortlisted"]);
   const [matches, lineCounts, otherCount, topSignals, blocked, aiQueue, spend] = await Promise.all([
-    supabase
-      .from("v_match_cards")
-      .select(MATCH_CARD_COLS)
-      .in("status", ["proposed", "shortlisted"])
+    (keep ? matchQ.or(keep) : matchQ)
       .order("total_score", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(10)

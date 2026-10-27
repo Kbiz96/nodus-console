@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
-import { MATCH_CARD_COLS } from "../lib/data.ts";
+import { MATCH_CARD_COLS, activeMandateFilter, inactiveMandateIds } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { fmtDate, fmtNumber } from "../lib/format.ts";
 import { feedbackLine } from "../lib/feedback.ts";
@@ -26,11 +26,12 @@ const VIEWS = [
 ] as const;
 
 async function load(statuses: readonly string[]) {
+  // Matches on switched-off mandates are hidden (they also stay out of the mandate list below).
+  const keep = activeMandateFilter(await inactiveMandateIds());
+  let q = supabase.from("v_match_cards").select(MATCH_CARD_COLS).in("status", statuses as string[]);
+  if (keep) q = q.or(keep);
   const rows = must(
-    await supabase
-      .from("v_match_cards")
-      .select(MATCH_CARD_COLS)
-      .in("status", statuses as string[])
+    await q
       .order("total_score", { ascending: false })
       .order("created_at", { ascending: false })
       .limit(LOAD_CAP),

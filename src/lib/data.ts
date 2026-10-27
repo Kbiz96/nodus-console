@@ -15,6 +15,16 @@ import { briefIsEmpty, parseBrief, type Brief, type LiveCounts, type PipelineCou
 export const MATCH_CARD_COLS =
   "id,status,total_score,scores,thesis,explanation,reject_reason,created_at,line,supply_id,supply_title,supply_gate,need_id,need_title,need_gate,mandate_id,mandate_label";
 
+/** Mandates that are switched off (mandates.active = false). Their matches are hidden everywhere. */
+export async function inactiveMandateIds(): Promise<string[]> {
+  return (must(await supabase.from("mandates").select("id").eq("active", false).limit(1000)) as { id: string }[]).map((m) => m.id);
+}
+
+/** A PostgREST `or` filter keeping matches with no mandate or an active one; null when nothing is switched off. */
+export function activeMandateFilter(inactive: string[]): string | null {
+  return inactive.length ? `mandate_id.is.null,mandate_id.not.in.(${inactive.join(",")})` : null;
+}
+
 /** Calls search_all with the page's filters. Several words must all appear. */
 export async function searchAll(f: Filters, limit = 50): Promise<SearchAll> {
   const res = await supabase.rpc("search_all", {

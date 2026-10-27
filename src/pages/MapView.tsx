@@ -65,7 +65,7 @@ async function load() {
       supabase.from("opportunities").select("id,line,side,title,country,region,credibility,gate,created_at,organisation_id,mw:specs->mw").order("id").range(a, b),
     ),
     pageAll<{ supply_opportunity_id: string | null; need_opportunity_id: string | null }>((a, b) =>
-      supabase.from("matches").select("supply_opportunity_id,need_opportunity_id").neq("status", "rejected").order("id").range(a, b),
+      supabase.from("matches").select("supply_opportunity_id,need_opportunity_id").in("status", ["proposed", "shortlisted"]).order("id").range(a, b),
     ),
     supabase.from("mandates").select("id,label,line,side,criteria,kind,holder").eq("active", true).limit(500).then((r) => must(r) as MandateRow[]),
     stagesAll(),

@@ -52,8 +52,14 @@ export default function Mandates() {
   const editing = editId ? data?.find((m) => m.id === editId) : undefined;
   const kindRaw = sp.get("kind");
   const kind = kindRaw && (kindRaw === "none" || (MANDATE_KINDS as readonly string[]).includes(kindRaw)) ? kindRaw : null;
-  const shown = (data ?? []).filter((m) => !kind || (kind === "none" ? !m.kind : m.kind === kind));
-  const kindCount = (k: string | null) => (data ?? []).filter((m) => (k === "none" ? !m.kind : !k || m.kind === k)).length;
+  // Switched-off mandates are hidden unless Kuran asks to see them.
+  const showOff = sp.get("off") === "1";
+  const offCount = (data ?? []).filter((m) => !m.active).length;
+  const visible = (data ?? []).filter((m) => showOff || m.active);
+  const shown = visible.filter((m) => !kind || (kind === "none" ? !m.kind : m.kind === kind));
+  const kindCount = (k: string | null) => visible.filter((m) => (k === "none" ? !m.kind : !k || m.kind === k)).length;
+  const withOff = (path: string) => (showOff ? `${path}${path.includes("?") ? "&" : "?"}off=1` : path);
+  const offToggle = kind ? `/mandates?kind=${kind}${showOff ? "" : "&off=1"}` : showOff ? "/mandates" : "/mandates?off=1";
 
   const toggle = async (m: MandateRow) => {
     setBusy(m.id);
@@ -88,12 +94,17 @@ export default function Mandates() {
           <h2>Your mandates</h2>
           {data && data.length > 0 && (
             <nav className="tabs" aria-label="Kind">
-              <Link to="/mandates" className={!kind ? "active" : undefined}>All ({kindCount(null)})</Link>
+              <Link to={withOff("/mandates")} className={!kind ? "active" : undefined}>All ({kindCount(null)})</Link>
               {MANDATE_KINDS.map((k) => (
-                <Link key={k} to={`/mandates?kind=${k}`} className={kind === k ? "active" : undefined}>{MANDATE_KIND_LABEL[k]} ({kindCount(k)})</Link>
+                <Link key={k} to={withOff(`/mandates?kind=${k}`)} className={kind === k ? "active" : undefined}>{MANDATE_KIND_LABEL[k]} ({kindCount(k)})</Link>
               ))}
-              {kindCount("none") > 0 && <Link to="/mandates?kind=none" className={kind === "none" ? "active" : undefined}>No kind ({kindCount("none")})</Link>}
+              {kindCount("none") > 0 && <Link to={withOff("/mandates?kind=none")} className={kind === "none" ? "active" : undefined}>No kind ({kindCount("none")})</Link>}
             </nav>
+          )}
+          {offCount > 0 && (
+            <p className="small muted">
+              <Link to={offToggle}>{showOff ? `Hide ${offCount} switched off` : `Show ${offCount} switched off`}</Link>
+            </p>
           )}
           {error && !data ? (
             <ErrorBox error={error} onRetry={reload} />
@@ -102,7 +113,7 @@ export default function Mandates() {
           ) : !data || data.length === 0 ? (
             <Empty>No mandates yet. Add your first one using the form.</Empty>
           ) : shown.length === 0 ? (
-            <Empty>No mandates of this kind.</Empty>
+            <Empty>{kind ? "No active mandates of this kind." : "No active mandates."}</Empty>
           ) : (
             <ul className="list">
               {shown.map((m) => (

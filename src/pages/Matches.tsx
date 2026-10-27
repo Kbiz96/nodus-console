@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { supabase, mustCount, must } from "../lib/supabase.ts";
-import { MATCH_CARD_COLS, searchAll } from "../lib/data.ts";
+import { MATCH_CARD_COLS, activeMandateFilter, inactiveMandateIds, searchAll } from "../lib/data.ts";
 import { pageFrom, parseFilters, type Filters } from "../lib/filters.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { fmtNumber } from "../lib/format.ts";
@@ -32,11 +32,14 @@ async function load(f: Filters, page: number) {
   }
   if ((ids && ids.length === 0) || (oppIds && oppIds.length === 0)) return { rows: [] as MatchCardRow[], total: 0, capped };
 
+  const keep = activeMandateFilter(await inactiveMandateIds());
   let q = supabase.from("v_match_cards").select(MATCH_CARD_COLS, { count: "exact" });
+  if (keep) q = q.or(keep);
   if (ids) q = q.in("id", ids);
   if (oppIds) q = q.or(`supply_id.in.(${oppIds.join(",")}),need_id.in.(${oppIds.join(",")})`);
   if (f.line) q = q.eq("line", f.line);
-  if (f.status) q = q.eq("status", f.status);
+  // Open matches (new and shortlisted) unless a status is picked.
+  q = f.status ? q.eq("status", f.status) : q.in("status", ["proposed", "shortlisted"]);
   q = q.order("total_score", { ascending: false }).order("created_at", { ascending: false }).order("id");
   const { rows, count } = mustCount(await q.range((page - 1) * PAGE, page * PAGE - 1));
   return { rows: rows as unknown as MatchCardRow[], total: count, capped };
@@ -57,8 +60,8 @@ export default function Matches() {
         <span className="eyebrow">Pipeline</span>
         <h1>Matches</h1>
         <p className="muted">
-          Every pairing the engine has proposed. Shortlist the good ones, reject the rest with a reason, and send the
-          best to your CRM as a file. {data && data.total > 0 && <>Showing {fmtNumber(data.total)}.</>}
+          Open pairings on active mandates (pick a status to see others). Shortlist the good ones, reject the rest with
+          a reason, and move the best into a deal. {data && data.total > 0 && <>Showing {fmtNumber(data.total)}.</>}
         </p>
       </div>
       <FilterBar path="/matches" filters={f} fields={["q", "line", "status", "country", "mw"]} />
