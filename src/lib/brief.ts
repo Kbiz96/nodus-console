@@ -1,7 +1,7 @@
 // The front page's "Today" block: the morning brief (daily_briefs, written 06:40 UK on weekdays), the Do now
 // list merged with live items, and the Background BD pipeline strip. Pure functions only, so they can be unit-tested.
 
-import { isGmailUrl, sendStatusText } from "./today.ts";
+import { isGmailUrl, sendStatusText, type SendState } from "./today.ts";
 
 export interface BriefCall { time: string; who: string; goal: string }
 export interface BriefItem { text: string; link: string | null }
@@ -18,7 +18,7 @@ export interface Brief {
   digest: string[];
   rep: { q: string; a: string } | null;
   replies: BriefReply[];
-  /** Legacy: the brief's own flag. The console no longer trusts it; sending is judged from outreach rows (sendLiveLoad). */
+  /** Whether the send batch is switched on: true or false as the brief says, null when the brief does not say. */
   send_enabled: boolean | null;
 }
 
@@ -116,8 +116,8 @@ export interface LiveCounts {
   drafts: number;
   /** Replies that need an answer. */
   replies: number;
-  /** An email actually went out in the last weekday day; null when unknown. */
-  sendLive?: boolean | null;
+  /** When the last email went out within the last weekday day; null when none did or unknown. */
+  lastSentAt?: string | null;
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -128,13 +128,13 @@ function plural(n: number, one: string, many: string): string {
  * Live items from the database. Replies and drafts are urgent (someone is waiting, or a send slot is coming);
  * new leads are routine and only take a slot the brief does not need.
  */
-export function liveItems(c: LiveCounts, sendEnabled: boolean | null = null): DoItem[] {
+export function liveItems(c: LiveCounts, send: SendState | null = null): DoItem[] {
   const out: DoItem[] = [];
   if (c.replies > 0) {
     out.push({ key: "live-replies", text: `Answer ${plural(c.replies, "reply", "replies")}`, detail: "Someone wrote back.", cta: "See replies", action: { kind: "scroll", target: "replies" }, live: true, urgent: true });
   }
   if (c.drafts > 0) {
-    out.push({ key: "live-drafts", text: `Approve ${plural(c.drafts, "draft", "drafts")}`, detail: sendStatusText(sendEnabled), cta: "Approve", action: { kind: "scroll", target: "approve" }, live: true, urgent: true });
+    out.push({ key: "live-drafts", text: `Approve ${plural(c.drafts, "draft", "drafts")}`, detail: sendStatusText(send), cta: "Approve", action: { kind: "scroll", target: "approve" }, live: true, urgent: true });
   }
   const leads = c.mandateLeads + c.backgroundLeads;
   if (leads > 0) {

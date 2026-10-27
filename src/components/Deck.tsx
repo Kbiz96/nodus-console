@@ -4,7 +4,7 @@ import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { copyNow, outreachChanged, outreachDecide, outreachMarkSent, outreachUnapprove } from "../lib/data.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, nextSendSlot, priorityPrompt } from "../lib/focus.ts";
-import { approvedText, isSendOn, sendStatusText } from "../lib/today.ts";
+import { approvedText, isSendOn, sendStatusText, type SendState } from "../lib/today.ts";
 import { useHandoffs } from "./handoff.ts";
 import { OUTREACH_KIND_LABEL } from "../lib/crm.ts";
 import { withoutParked } from "../lib/mandates.ts";
@@ -41,7 +41,7 @@ type Done = { text: string; ok: boolean };
 /**
  * One draft at a time. Email: approve (the send batch sends it at the next slot when sending is on), skip or edit.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
- * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `sendEnabled`: whether an email actually went out in the last weekday day.
+ * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `sendEnabled`: the brief's flag, or failing that what last went out.
  */
 export default function Deck({ priorities, priorityId = null, opportunityId = null, onChanged, emailOnly = false, sendEnabled = null }: {
   priorities: Priority[];
@@ -49,7 +49,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
   opportunityId?: string | null;
   onChanged?: () => void;
   emailOnly?: boolean;
-  sendEnabled?: boolean | null;
+  sendEnabled?: SendState | null;
 }) {
   const handoffs = useHandoffs();
   const { data, error, loading, reload } = useLoad(() => load(priorityId, opportunityId, emailOnly), `deck-${priorityId ?? "all"}-${opportunityId ?? ""}-${emailOnly ? "email" : "all"}`);
@@ -198,7 +198,7 @@ function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onUndo, 
   person: Person | null;
   priority: Priority | null;
   canLater: boolean;
-  sendEnabled: boolean | null;
+  sendEnabled: SendState | null;
   onDone: (d: Done) => void;
   onUndo: (ids: string[]) => void;
   onLater: () => void;
@@ -367,7 +367,7 @@ function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onUndo, 
 function ApproveAll({ label, rows, sendEnabled, onApproved }: {
   label: string;
   rows: Outreach[];
-  sendEnabled: boolean | null;
+  sendEnabled: SendState | null;
   onApproved: (ids: string[], failed: number) => void;
 }) {
   const [open, setOpen] = useState(false);

@@ -8,9 +8,19 @@ import type { CrmContact, Deal, Outreach } from "./types.ts";
 // ---------- sending ----------
 
 export const SEND_ON_TEXT = "Approved emails go out at 09:53, 12:53 and 15:53.";
+export const SEND_OFF_TEXT = "Sending is paused. Approved emails wait.";
 export const SEND_IDLE_TEXT = "No emails sent in the last day.";
 
+/**
+ * Whether approved emails are going out. The morning brief's send_enabled flag wins when it is present (true or
+ * false). When the brief does not say, the console only reports what it can see: when the last email actually
+ * went out (status sent, sent_at set) within the last weekday day, or that none did. It never promises the batch
+ * times on that evidence alone: a manual send looks the same as a batch send.
+ */
+export type SendState = { kind: "on" } | { kind: "off" } | { kind: "last"; at: string } | { kind: "none" };
+
 const ukWeekday = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short" });
+const ukWhen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const isWeekend = (d: Date) => ["Sat", "Sun"].includes(ukWeekday.format(d));
 
 /**
@@ -23,29 +33,47 @@ export function sendWindowStart(now = new Date()): Date {
   return new Date(t);
 }
 
-/** Sending is live when an email actually went out (status sent, sent_at set) in the last weekday day. Read from data, never from a flag. */
-export function isSendLive(sentAts: (string | null | undefined)[], now = new Date()): boolean {
+/** The latest sent_at inside the last weekday day, or null when no email went out in it. */
+export function lastSentIn(sentAts: (string | null | undefined)[], now = new Date()): string | null {
   const from = sendWindowStart(now).getTime();
-  return sentAts.some((s) => {
+  let best: number | null = null;
+  for (const s of sentAts) {
     const t = s ? Date.parse(s) : NaN;
-    return Number.isFinite(t) && t >= from && t <= now.getTime() + 60e3 && !isWeekend(new Date(t));
-  });
+    if (Number.isFinite(t) && t >= from && t <= now.getTime() + 60e3 && (best === null || t > best)) best = t;
+  }
+  return best === null ? null : new Date(best).toISOString();
 }
 
-/** True only when sending is known to be live. Unknown counts as not live: the console never claims a send it cannot vouch for. */
-export function isSendOn(v: unknown): boolean {
-  return v === true;
+/** The brief's flag first (true/false); otherwise what the outreach rows show. */
+export function sendState(briefFlag: boolean | null | undefined, lastSentAt: string | null | undefined): SendState {
+  if (briefFlag === true) return { kind: "on" };
+  if (briefFlag === false) return { kind: "off" };
+  return lastSentAt ? { kind: "last", at: lastSentAt } : { kind: "none" };
 }
 
-/** The one line that says whether approved emails are going out, judged from what was actually sent. */
-export function sendStatusText(v: unknown): string {
-  return isSendOn(v) ? SEND_ON_TEXT : SEND_IDLE_TEXT;
+/** True only when the brief says sending is on. Unknown counts as not on: the console never claims a send it cannot vouch for. */
+export function isSendOn(v: SendState | null | undefined): boolean {
+  return v?.kind === "on";
+}
+
+/** The one line that says whether approved emails will actually go out. */
+export function sendStatusText(v: SendState | null | undefined): string {
+  if (!v) return SEND_IDLE_TEXT;
+  if (v.kind === "on") return SEND_ON_TEXT;
+  if (v.kind === "off") return SEND_OFF_TEXT;
+  if (v.kind === "last") {
+    const t = Date.parse(v.at);
+    return Number.isFinite(t) ? `Last email went out ${ukWhen.format(new Date(t))}.` : SEND_IDLE_TEXT;
+  }
+  return SEND_IDLE_TEXT;
 }
 
 /** What Approve says afterwards. */
-export function approvedText(name: string | null, v: unknown, slotLabel: string): string {
+export function approvedText(name: string | null, v: SendState | null | undefined, slotLabel: string): string {
   const who = name || "the email";
-  return isSendOn(v) ? `Approved ${who}. Sends at ${slotLabel}.` : `Approved ${who}. Queued for the next send batch.`;
+  if (v?.kind === "on") return `Approved ${who}. Sends at ${slotLabel}.`;
+  if (v?.kind === "off") return `Approved ${who}. Sending is paused, so it waits.`;
+  return `Approved ${who}. It waits for the send batch.`;
 }
 
 export function isGmailUrl(url: string | null | undefined): boolean {

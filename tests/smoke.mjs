@@ -178,8 +178,8 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(/Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".home-dateline").textContent()) ?? ""), at("Today greets Kuran"));
   await page.locator(".home-headline:not(.is-quiet)").waitFor();
   check((await page.locator(".home-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
-  check((await page.locator(".sendline").textContent()) === "No emails sent in the last day.", at("no email sent in the last day: the sending line says so"));
-  check(await page.getByText(/go out at 09:53/).count() === 0, at("nothing on Today claims a send time when nothing went out"));
+  check((await page.locator(".sendline").textContent()) === "Sending is paused. Approved emails wait.", at("send_enabled false: the sending line says paused"));
+  check(await page.getByText(/go out at 09:53/).count() === 0, at("nothing on Today claims a send time while sending is paused"));
   // ---- Focus session: the brief's three items, one button each ----
   await page.locator(".do-row").nth(2).waitFor();
   const doTexts = await page.locator(".do-row .do-text").allTextContents();
@@ -218,10 +218,10 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(await why.locator("summary").textContent() === "Why this person" && await why.getAttribute("open") === null, at("the research card is folded under Why this person"));
   await why.locator("summary").click();
   check((await why.locator("p").textContent())?.startsWith("Head of Energy at Example Power"), at("Why this person opens the research card"));
-  check((await deck.locator(".deck-hint").textContent())?.includes("No emails sent in the last day."), at("the deck repeats the sending line"));
+  check((await deck.locator(".deck-hint").textContent())?.includes("Sending is paused."), at("the deck repeats that sending is paused"));
   for (const b of ["Approve", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
   await deck.getByRole("button", { name: "Approve", exact: true }).click();
-  await deck.getByText("Approved Alex Example. Queued for the next send batch.").first().waitFor();
+  await deck.getByText("Approved Alex Example. Sending is paused, so it waits.").first().waitFor();
   check(await page.locator(".toast", { hasText: "Approved Alex Example." }).getByRole("button", { name: "Undo" }).count() === 1, at("approving offers Undo"));
   check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Approve goes through outreach_decide"));
   await deck.getByText("All done. Nothing else is waiting for you.").waitFor();
@@ -555,7 +555,7 @@ async function focusFlow(browser, label, viewport) {
   if (label === "desktop") await page.keyboard.press("a");
   else await page.getByRole("button", { name: "Approve", exact: true }).click();
   await page.locator(".deck-last").waitFor();
-  check((await page.locator(".deck-last").textContent()) === "Approved Alex Example. Queued for the next send batch.", at("with nothing sent lately, approving says it is queued (no send time is claimed)"));
+  check((await page.locator(".deck-last").textContent()) === "Approved Alex Example. Sending is paused, so it waits.", at("with sending paused, approving says it waits (no send time is claimed)"));
   check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at(`${label === "desktop" ? "A key" : "Approve"} goes through outreach_decide`));
   check(/2\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("the deck moves on to 2 of 3"));
   await page.evaluate(() => {
@@ -882,8 +882,13 @@ try {
     check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), `with no brief, Today says when it arrives (got "${note}")`);
     const liveTexts = (await p3.locator(".do-row .do-text").allTextContents()).join("|");
     check(/^Answer 1 reply\|Approve \d+ drafts?\|Approve or dismiss 18 new leads$/.test(liveTexts), `with no brief, live items stand in for the focus session (${liveTexts})`);
-    check((await p3.locator(".sendline").textContent()) === "No emails sent in the last day.", "with no brief, sending is never claimed");
+    check((await p3.locator(".sendline").textContent()) === "No emails sent in the last day.", "with no brief and nothing sent, sending is never claimed");
     check(await p3.locator(".home-calls").count() === 0, "with no brief, there is no calls or digest panel");
+    // No brief but one email went out: the line reports that send, without promising the batch times.
+    nb.tables.outreach = [...fx.tables.outreach, { id: "eeeeeeee-9999-4000-8000-000000000001", kind: "email", channel: "email", status: "sent", sent_at: new Date(Date.now() - 2 * 3600e3).toISOString(), to_name: "Sent Today", created_at: new Date(Date.now() - 30 * 3600e3).toISOString() }];
+    await p3.reload();
+    await p3.locator(".sendline:not(.is-on)", { hasText: /^Last email went out / }).waitFor();
+    check(await p3.getByText(/go out at 09:53/).count() === 0, "a lone real send never turns into a promise of the batch times");
     await p3.screenshot({ path: path.join(frontShots, "front-no-brief-phone.png") });
     await ctx3.close();
   }
@@ -945,10 +950,10 @@ try {
     await p.evaluate(() => window.scrollTo(0, 0));
     await p.screenshot({ path: path.join(v3, `today-send-off-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `today-send-off-${name}-full.png`), fullPage: true });
-    big.tables.outreach = [...big.tables.outreach, { id: "eeeeeeee-9999-4000-8000-000000000001", kind: "email", channel: "email", status: "sent", sent_at: new Date(Date.now() - 2 * 3600e3).toISOString(), to_name: "Sent Today", created_at: new Date(Date.now() - 30 * 3600e3).toISOString() }];
+    big.tables.daily_briefs = [dailyBrief(ukDay, true)];
     await p.reload();
     await p.locator(".sendline.is-on").waitFor();
-    check((await p.locator(".sendline").textContent()) === "Approved emails go out at 09:53, 12:53 and 15:53.", `an email went out today: the sending line gives the slots (${name})`);
+    check((await p.locator(".sendline").textContent()) === "Approved emails go out at 09:53, 12:53 and 15:53.", `send_enabled true: the sending line gives the slots (${name})`);
     await p.locator("#approve .deck-card").waitFor();
     await p.locator(".mrow").first().waitFor();
     await p.waitForTimeout(500);
