@@ -15,6 +15,7 @@ import type { Outreach } from "../lib/types.ts";
 import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { AskClaude } from "../components/PriorityCard.tsx";
 import Deck from "../components/Deck.tsx";
+import { OlderApproved, SentLane } from "../components/SentLane.tsx";
 import { LinkedInPanel } from "../components/LinkedInPanel.tsx";
 import { Questions } from "../components/Questions.tsx";
 import { MandateRows } from "../components/MandateRows.tsx";
@@ -201,10 +202,12 @@ export default function Home() {
 
         <section className="home-approve" id="approve" aria-labelledby="h-approve">
           <div className="today-sec">
-            <h2 id="h-approve" tabIndex={-1}>Approve</h2>
-            <span className="muted small">Emails, one at a time</span>
+            <h2 id="h-approve" tabIndex={-1}>Send</h2>
+            <span className="muted small">Emails, one at a time, by mandate</span>
           </div>
           <Deck priorities={priorities} onChanged={prioQ.reload} emailOnly sendEnabled={sendEnabled} />
+          <OlderApproved />
+          <SentLane />
         </section>
       </div>
 

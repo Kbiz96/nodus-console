@@ -47,7 +47,11 @@ export async function callApollo<T>(body: Record<string, unknown>): Promise<T | 
 
 export const apolloSend = (outreachId: string) => callApollo<SendOk>({ action: "send", outreach_id: outreachId });
 export const apolloFind = (query: string, mandateId?: string | null) => callApollo<FindOk>({ action: "find", query, ...(mandateId ? { mandate_id: mandateId } : {}) });
-export const apolloEnrich = (leadId: string) => callApollo<EnrichOk>({ action: "enrich", lead_candidate_id: leadId });
+export const apolloEnrich = async (leadId: string) => {
+  const r = await callApollo<EnrichOk>({ action: "enrich", lead_candidate_id: leadId });
+  if (r.ok || r.credits) creditsSpent();
+  return r;
+};
 export const apolloOpportunity = (text: string) => callApollo<OpportunityOk>({ action: "opportunity", text });
 
 export const KIND_LABEL: Record<string, string> = { site: "Site", capital_ask: "Capital ask", need: "Need", investor_mandate: "Investor mandate" };
@@ -95,4 +99,47 @@ export function draftPrompt(
     "No names across sides before Protected; never mention fees. Insert it into outreach as a draft (channel email, to_email set, linked contact) " +
     "so it appears in the console Approve deck, and put two short follow-ups in the note as \"FU1: ...\" and \"FU2: ...\". Do not send."
   );
+}
+
+// ---------- read back from Apollo: activity and credits ----------
+
+export type SeqStatus = "active" | "paused" | "finished" | "failed" | "unknown";
+export interface ActivityRow {
+  outreach_id: string; contact_id: string | null; to_email: string; to_name: string | null; company: string | null; sent_at: string | null;
+  sequence_id: string | null; apollo_contact_id: string | null; sequence_status: SeqStatus;
+  sent: number; opens: number; replied: boolean; bounced: boolean; reply_class: string | null; lane: "replied" | "bounced" | "in_sequence";
+}
+export interface ActivityOk { ok: true; rows: ActivityRow[]; updated: number; checked_at: string }
+export interface CreditsOk { ok: true; left: number | null; limit: number | null; consumed: number | null; cycle_end: string | null }
+
+export const apolloActivity = () => callApollo<ActivityOk>({ action: "activity" });
+export const apolloCredits = () => callApollo<CreditsOk>({ action: "credits" });
+
+/** The three lanes of Sent & replies, in order. */
+export function activityLanes(rows: ActivityRow[]): { replied: ActivityRow[]; bounced: ActivityRow[]; inSequence: ActivityRow[] } {
+  return {
+    replied: rows.filter((r) => r.lane === "replied"),
+    bounced: rows.filter((r) => r.lane === "bounced"),
+    inSequence: rows.filter((r) => r.lane === "in_sequence"),
+  };
+}
+
+const REPLY_CLASS: Record<string, string> = {
+  willing_to_meet: "Willing to meet", follow_up_question: "Has a question", person_referral: "Referred someone",
+  out_of_office: "Out of office", already_left_company_or_not_right_person: "Wrong person", not_interested: "Not interested", unsubscribe: "Unsubscribed",
+};
+export function replyClassLabel(c: string | null): string | null {
+  return c ? REPLY_CLASS[c] ?? null : null;
+}
+
+/** "Credits 880 left" for the status bar; null when unknown. */
+export function creditsText(c: Pick<CreditsOk, "left" | "limit"> | null | undefined): string | null {
+  if (!c || c.left === null) return null;
+  return `${Math.round(c.left).toLocaleString("en-GB")}${c.limit ? ` / ${Math.round(c.limit).toLocaleString("en-GB")}` : ""}`;
+}
+
+/** Fired after a credit is spent (Enrich), so the status bar re-reads the balance. */
+export const CREDITS_EVENT = "nodus-credits-changed";
+export function creditsSpent(): void {
+  try { window.dispatchEvent(new Event(CREDITS_EVENT)); } catch { /* not in a browser */ }
 }

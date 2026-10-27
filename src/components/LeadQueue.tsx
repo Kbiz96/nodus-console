@@ -7,6 +7,7 @@ import type { Priority } from "../lib/types.ts";
 import { AskClaude, openInClaude } from "./PriorityCard.tsx";
 import { useHandoffs } from "./handoff.ts";
 import { Icon } from "./Brand.tsx";
+import { LeadEnrichDraft } from "./LeadEnrichDraft.tsx";
 
 const FIRST = 6;
 
@@ -242,6 +243,7 @@ function LeadRow({ r, active, selected, showLine, onFocus, onToggle, onApprove, 
         )
       )}
       <div className="lead-acts">
+        <LeadEnrichDraft r={r} about={r.hook || r.company || "this mandate"} />
         <button type="button" className="lead-yes" onClick={onApprove} aria-label={`Approve ${r.name}`} title="Approve (A)"><Icon.check /></button>
         <button type="button" className="lead-no" onClick={onDismiss} aria-label={`Dismiss ${r.name}`} title="Dismiss (X)"><Icon.close /></button>
       </div>

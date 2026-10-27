@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { leadsDecide } from "../lib/data.ts";
+import { networkDismiss, leadsDecide } from "../lib/data.ts";
 import { LEAD_UNDO_MS, decide, type Lead, type LeadOverrides, type LeadStatus } from "../lib/leads.ts";
 import { friendlyError } from "../lib/rules.ts";
 import { toast } from "./Toast.tsx";
@@ -32,6 +32,12 @@ export function useLeadDecide(): { over: LeadOverrides; decideLeads: (rows: Lead
       });
       toast(`That did not save: ${friendlyError(e)}`, false);
       return;
+    }
+    // A dismissed person who is already in the CRM also leaves that mandate's network list (network_dismissals).
+    if (status === "dismissed") {
+      const byPrio = new Map<string, string[]>();
+      for (const r of rows) if (r.priority_id && r.contact_id) byPrio.set(r.priority_id, [...(byPrio.get(r.priority_id) ?? []), r.contact_id]);
+      for (const [pid, cids] of byPrio) await networkDismiss(pid, cids, "lead dismissed").catch(() => undefined);
     }
     window.dispatchEvent(new Event("nodus-leads-changed"));
     if (quiet) return;

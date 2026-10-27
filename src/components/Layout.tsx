@@ -7,6 +7,8 @@ import { Toaster } from "./Toast.tsx";
 import { calmPref, remember, setCalmPref } from "../lib/calm.ts";
 import { engineTabOf } from "./EngineTabs.tsx";
 import { BUILD_TIME, buildLabel, useNewVersion } from "../lib/version.ts";
+import { CREDITS_EVENT, apolloCredits, creditsText, type CreditsOk } from "../lib/apollo.ts";
+import { cached, peek } from "../lib/cache.ts";
 
 interface Item { to: string; label: string; icon: IconName; end?: boolean }
 
@@ -293,7 +295,29 @@ function useStatus(path: string): Status {
   return s;
 }
 
+/** Apollo credits left this cycle (through the ten-minute cache; refreshed after an Enrich). */
+function useCredits(): CreditsOk | null {
+  const [c, setC] = useState<CreditsOk | null>(() => peek<CreditsOk>("apollo:credits")?.data ?? null);
+  useEffect(() => {
+    let live = true;
+    const get = (force: boolean) => {
+      cached("apollo:credits", async () => {
+        const r = await apolloCredits();
+        if (!r.ok) throw new Error(r.reason);
+        return r;
+      }, { force }).then((r) => { if (live) setC(r); }, () => undefined);
+    };
+    get(false);
+    const onSpend = () => get(true);
+    window.addEventListener(CREDITS_EVENT, onSpend);
+    return () => { live = false; window.removeEventListener(CREDITS_EVENT, onSpend); };
+  }, []);
+  return c;
+}
+
 function StatusStrip({ s, calm, onCalm }: { s: Status; calm: boolean; onCalm: () => void }) {
+  const credits = useCredits();
+  const creditLine = creditsText(credits);
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const iv = window.setInterval(() => setNow(new Date()), 15_000);
@@ -317,7 +341,7 @@ function StatusStrip({ s, calm, onCalm }: { s: Status; calm: boolean; onCalm: ()
         {s.sourcesAll !== null && <span>/ {fmtNumber(s.sourcesAll)}</span>}
       </Link>
       <Link to="/" className={`strip-cell${s.drafts > 0 ? " hot" : ""}`}>
-        <span className="k">To approve</span>
+        <span className="k">To send</span>
         <b>{fmtNumber(s.drafts)}</b>
       </Link>
       <Link to="/board" className="strip-cell">
@@ -329,6 +353,12 @@ function StatusStrip({ s, calm, onCalm }: { s: Status; calm: boolean; onCalm: ()
         <b>{s.aiQueue === null ? "…" : fmtNumber(s.aiQueue)}</b>
       </Link>
       </>
+      )}
+      {creditLine && (
+        <a className={`strip-cell strip-credits${credits && credits.left !== null && credits.left < 50 ? " hot" : ""}`} href="https://app.apollo.io/#/settings/credits/current" target="_blank" rel="noopener noreferrer" title={credits?.cycle_end ? `Apollo email credits left this cycle (renews ${credits.cycle_end.slice(0, 10)})` : "Apollo email credits left this cycle"}>
+          <span className="k">Credits</span>
+          <b>{creditLine}</b>
+        </a>
       )}
       <button type="button" className="strip-cell strip-calm" aria-pressed={calm} onClick={onCalm} title={calm ? "Calm mode is on: counters and effects are hidden. Press to show them." : "Hide the counters and effects"}>
         <Icon.calm />

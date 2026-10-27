@@ -1,6 +1,7 @@
 // Every read and write the console makes. Reads go to tables (protected by Row Level Security);
 // writes go only through the checked database functions.
-import { supabase, must } from "./supabase.ts";
+import { supabase, must, DbError } from "./supabase.ts";
+import { holdNote, OLD_STYLE_NOTE, type HoldKey } from "./deck.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
 import type { BoardRow, CrmContact, MatchCardRow, Deal, NetworkRow, Outreach, Priority, PriorityProgress, SearchAll } from "./types.ts";
@@ -194,13 +195,6 @@ function mustChange(res: { data: unknown; error: { message: string; code?: strin
 
 export async function outreachDecide(id: string, decision: "approve" | "skip" | "edit", subject?: string | null, body?: string | null): Promise<void> {
   must(await supabase.rpc("outreach_decide", { p_id: id, p_decision: decision, p_subject: subject ?? null, p_body: body ?? null }));
-}
-
-/** Undo an approval: approved emails not yet sent go back to draft. Returns how many came back. */
-export async function outreachUnapprove(ids: string[]): Promise<number> {
-  if (!ids.length) return 0;
-  const rows = must(await supabase.from("outreach").update({ status: "draft", approved_at: null }).in("id", ids).eq("status", "approved").select("id")) as { id: string }[];
-  return rows?.length ?? 0;
 }
 
 /** Kuran has sent a LinkedIn item himself. The one direct status update the console makes. */
@@ -611,9 +605,79 @@ export async function matchToDeal(matchId: string, today = ukToday()): Promise<{
   return { id: rows[0].id, deal: row.deal };
 }
 
-/** Emails saved for later (status approved, channel email, an address set): what "Send N saved for later" covers. */
-export async function approvedEmailIds(): Promise<string[]> {
-  const res = await supabase.from("outreach").select("id").eq("status", "approved").eq("channel", "email").not("to_email", "is", null).order("approved_at", { ascending: true }).limit(200);
-  if (res.error) return [];
-  return ((res.data ?? []) as { id: string }[]).map((r) => r.id);
+// ---------- the Send deck: hold, fit, older approved ----------
+
+/** Hold drafts: status parked, with the reason appended to each note. Only drafts and unsent approvals move. */
+export async function outreachHold(rows: Pick<Outreach, "id" | "note">[], reason: HoldKey, other = ""): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += 10) {
+    const res = await Promise.all(rows.slice(i, i + 10).map((r) =>
+      supabase.from("outreach").update({ status: "parked", note: holdNote(r.note, reason, other) }).eq("id", r.id).in("status", ["draft", "approved"]).select("id"),
+    ));
+    for (const r of res) n += (must(r) as unknown[] | null)?.length ?? 0;
+  }
+  return n;
+}
+
+/** Fit scores for the people the deck writes to (from their lead record), keyed by outreach id. */
+export async function deckFit(rows: Pick<Outreach, "id" | "contact_id">[]): Promise<Map<string, number>> {
+  const ids = [...new Set(rows.map((r) => r.contact_id).filter(Boolean))] as string[];
+  const out = new Map<string, number>();
+  if (!ids.length) return out;
+  const res = await supabase.from("lead_candidates").select("contact_id,fit_score").in("contact_id", ids.slice(0, 300)).not("fit_score", "is", null);
+  if (res.error) return out;
+  const byContact = new Map<string, number>();
+  for (const l of (res.data ?? []) as { contact_id: string; fit_score: number | string }[]) {
+    const f = Number(l.fit_score);
+    if (Number.isFinite(f)) byContact.set(l.contact_id, Math.max(f, byContact.get(l.contact_id) ?? -1));
+  }
+  for (const r of rows) if (r.contact_id && byContact.has(r.contact_id)) out.set(r.id, byContact.get(r.contact_id)!);
+  return out;
+}
+
+export const OLD_APPROVED_COLS = "id,to_name,company,subject,note,approved_at,created_at";
+export type OldApproved = Pick<Outreach, "id" | "to_name" | "company" | "subject" | "note" | "approved_at" | "created_at">;
+
+/** Emails approved under the old scheduled sending and never sent (written before the 27 Oct outbound style). */
+export async function oldApprovedLoad(): Promise<{ rows: OldApproved[]; count: number }> {
+  const r = await supabase.from("outreach").select(OLD_APPROVED_COLS, { count: "exact" }).eq("status", "approved").is("sent_at", null)
+    .order("approved_at", { ascending: true, nullsFirst: true }).limit(200);
+  const { rows, count } = mustCountRows(r);
+  return { rows: rows as unknown as OldApproved[], count };
+}
+
+/** Park every older approved email: status parked, note "| parked 27 Oct: old style". Nothing is sent. */
+export async function oldApprovedParkAll(rows: Pick<Outreach, "id" | "note">[]): Promise<number> {
+  let n = 0;
+  for (let i = 0; i < rows.length; i += 10) {
+    const res = await Promise.all(rows.slice(i, i + 10).map((r) =>
+      supabase.from("outreach").update({ status: "parked", note: `${r.note ?? ""}${OLD_STYLE_NOTE}` }).eq("id", r.id).eq("status", "approved").is("sent_at", null).select("id"),
+    ));
+    for (const x of res) n += (must(x) as unknown[] | null)?.length ?? 0;
+  }
+  return n;
+}
+
+function mustCountRows<T>(res: { data: T[] | null; count: number | null; error: { message: string; code?: string } | null }): { rows: T[]; count: number } {
+  if (res.error) throw new DbError(res.error);
+  return { rows: res.data ?? [], count: res.count ?? (res.data?.length ?? 0) };
+}
+
+/** "Move to deal" on a reply: a Lead-stage deal for that person, linked to their contact, next step due in two days. */
+export async function dealFromReply(r: { to_name: string | null; to_email: string; company: string | null; contact_id: string | null; outreach_id: string }): Promise<string> {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() + 2);
+  const row = {
+    deal: `${r.company || r.to_name || r.to_email}`.slice(0, 200),
+    counterparty: r.company ?? r.to_name ?? null,
+    contact_id: r.contact_id,
+    stage: "Lead",
+    next_step: "Answer their reply and book a call",
+    next_date: d.toISOString().slice(0, 10),
+    notes: `From an email reply (${r.to_email}).`,
+    extra: { outreach_id: r.outreach_id },
+  };
+  const rows = must(await supabase.from("deals").insert(row).select("id")) as { id: string }[];
+  if (!rows?.[0]?.id) throw new Error("The deal was not saved. Reload and try again.");
+  return rows[0].id;
 }

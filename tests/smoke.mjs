@@ -84,6 +84,12 @@ function fake(approved, data = fx) {
       fnCalls.push(body);
       if (fnState.missingKey && body.action !== "find") return json(200, { ok: false, reason: "missing_api_key", message: "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY" });
       if (body.action === "send") return json(200, { ok: true, contact_id: "apc1", sequence: { key: "capital", id: "6ae0955be36fa500181c4307", name: "Capital / investors", from: "kuran@nodus.partners" }, followups_missing: [] });
+      if (body.action === "credits") return json(200, { ok: true, left: 880, limit: 1000, consumed: 120, cycle_end: "2026-11-15" });
+      if (body.action === "activity") return json(200, { ok: true, updated: 1, checked_at: "2026-10-27T10:00:00Z", rows: [
+        { outreach_id: "o-r", contact_id: null, to_email: "dana@example.com", to_name: "Dana Reed", company: "Penguin Cluster Co", sent_at: "2026-10-26T09:00:00Z", sequence_id: "s", apollo_contact_id: "a1", sequence_status: "finished", sent: 1, opens: 2, replied: true, bounced: false, reply_class: "willing_to_meet", lane: "replied" },
+        { outreach_id: "o-b", contact_id: null, to_email: "bad@example.com", to_name: "Bo Bounce", company: null, sent_at: "2026-10-26T09:00:00Z", sequence_id: "s", apollo_contact_id: "a2", sequence_status: "finished", sent: 1, opens: 0, replied: false, bounced: true, reply_class: null, lane: "bounced" },
+        { outreach_id: "o-s", contact_id: null, to_email: "sam@example.com", to_name: "Sam Seq", company: "Example Infra", sent_at: "2026-10-27T09:00:00Z", sequence_id: "s", apollo_contact_id: "a3", sequence_status: "active", sent: 1, opens: 1, replied: false, bounced: false, reply_class: null, lane: "in_sequence" },
+      ] });
       if (body.action === "enrich") return json(200, { ok: true, email: "jo.bloggs@example-infra.com", email_status: "verified", contact_id: "cc1", credits: 1 });
       if (body.action === "find") {
         const people = fnState.missingKey ? [] : [
@@ -264,13 +270,22 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   await why.locator("summary").click();
   check((await why.locator("p").textContent())?.startsWith("Head of Energy at Example Power"), at("Why this person opens the research card"));
   check((await deck.locator(".deck-hint").textContent())?.includes("Emails go out when you press Send (via Apollo)."), at("the deck says Send sends via Apollo"));
-  for (const b of ["Send", "Save for later", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
+  for (const b of ["Send", "Hold", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
   const fnBefore = fnCalls.length;
   await deck.getByRole("button", { name: "Send", exact: true }).click();
   await deck.getByText("Sent Alex Example via Apollo (Capital / investors sequence).").first().waitFor();
   check(fnCalls.slice(fnBefore).some((c) => c.action === "send" && c.outreach_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Send calls the nodus-apollo function for this draft"));
   await deck.getByText("All done. Nothing else is waiting for you.").waitFor();
   check(await deck.getByRole("link", { name: /Ask Claude/ }).count() === 0, at("the empty deck on Today offers no extra Claude chat"));
+  // ---- Credits chip, Sent & replies, build stamp ----
+  await page.locator(".strip-credits").waitFor();
+  check((await page.locator(".strip-credits b").textContent()) === "880 / 1,000", at("the status bar shows Apollo credits left"));
+  await page.locator(".sent-lane summary").click();
+  await page.locator(".sent-group").first().waitFor();
+  check(JSON.stringify(await page.locator(".sent-group h4").allTextContents()) === JSON.stringify(["Replied 1", "Bounced 1", "In sequence 1"]), at("Sent & replies: replied first, then bounced, then in sequence"));
+  check(await page.locator(".sent-group.is-replied").getByRole("link", { name: "Reply in Gmail" }).getAttribute("href") === "https://mail.google.com/mail/u/0/#search/dana%40example.com", at("a reply opens a Gmail search for their address"));
+  check(await page.locator(".sent-group.is-replied").getByRole("button", { name: "Move to deal" }).count() === 1, at("a reply can be moved to a deal"));
+  check(/^Build [0-9a-f]{7}|^Build dev/.test((await page.locator(".build-stamp").textContent()) ?? ""), at("the footer shows the build SHA"));
   // ---- LinkedIn: connected people only; the rest wait for a connection ----
   const li = page.locator("#linkedin");
   await li.locator(".li-row").first().waitFor();
@@ -597,11 +612,13 @@ async function focusFlow(browser, label, viewport) {
   await page.locator(".deck-card").waitFor();
   check(/1\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("Review shows 1 of 3 (email and LinkedIn)"));
   check(await page.locator(".deck-card .ptag").textContent() === "Priority 1: Al-Risha phase 1: find the offtaker", at("priority-tagged draft comes first"));
-  if (label === "desktop") await page.keyboard.press("a");
-  else await page.getByRole("button", { name: "Save for later", exact: true }).click();
+  check(await page.getByRole("button", { name: /^(Approve|Save for later)$/ }).count() === 0, at("the deck has no Approve step"));
+  if (label === "desktop") await page.keyboard.press("h");
+  else await page.getByRole("button", { name: "Hold", exact: true }).click();
+  await page.locator(".deck-hold").getByRole("button", { name: "Live account" }).click();
   await page.locator(".deck-last").waitFor();
-  check((await page.locator(".deck-last").textContent()) === "Saved Alex Example for later. Press Send when you're ready.", at("Save for later says so and does not send"));
-  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at(`${label === "desktop" ? "A key" : "Approve"} goes through outreach_decide`));
+  check((await page.locator(".deck-last").textContent()) === "Held Alex Example (live account). It won't be sent.", at("Hold parks the draft with the reason and does not send"));
+  check(newWrites().some((w) => w.table === "outreach" && w.method === "PATCH" && w.body.status === "parked" && /held \d{1,2} \w{3}: Live account$/.test(w.body.note) && w.url.includes("eeeeeeee-1111-4000-8000-000000000001")), at(`${label === "desktop" ? "H key" : "Hold"} writes status parked with the reason in the note`));
   check(/2\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("the deck moves on to 2 of 3"));
   await page.evaluate(() => {
     const open = window.open.bind(window);
@@ -635,10 +652,10 @@ async function focusFlow(browser, label, viewport) {
   await page.getByRole("button", { name: "Save edit" }).click();
   await page.getByText("Edit saved.").waitFor();
   check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "edit" && c.body.p_body === "Hello Alex,\nShorter note."), at("Review edit saves through outreach_decide"));
-  if (label === "desktop") await page.keyboard.press("s");
+  if (label === "desktop") await page.keyboard.press("k");
   else await page.getByRole("button", { name: "Skip" }).click();
   await page.locator(".deck-last").waitFor();
-  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "skip"), at(`${label === "desktop" ? "S key" : "Skip"} uses the skip path`));
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "skip"), at(`${label === "desktop" ? "K key" : "Skip"} uses the skip path`));
   check(await page.locator(".deck-card").getByRole("button", { name: "Skip" }).count() === 0, at("an approved LinkedIn item has no Skip"));
   if (label === "phone") await page.screenshot({ path: path.join(shots, "review-small-phone.png") });
   await page.goto(`${base}#/review?priority=${P1}`);
@@ -810,7 +827,7 @@ try {
   await page.goto(`${base}#/today`);
   await page.getByRole("heading", { name: "Approvals" }).waitFor();
   check(await page.locator(".nav-count").first().textContent() === "2", "the nav shows a drafts badge on Today");
-  check(await page.getByRole("link", { name: "Approve on Today" }).getAttribute("href") === "#/", "the Daily report points approvals to Today instead of a second queue");
+  check(await page.getByRole("link", { name: "Send on Today" }).getAttribute("href") === "#/", "the Daily report points approvals to Today instead of a second queue");
   check(await page.getByRole("button", { name: "Approve all shown" }).count() === 0, "there is no bulk approve on the Daily report");
   check(await page.getByText("Chase the NCNDA").isVisible(), "the Daily report lists actions to do first");
   check(await page.getByRole("link", { name: "Example 20 MW gensets" }).isVisible(), "the Daily report lists deals due");
@@ -926,7 +943,7 @@ try {
     const note = (await p3.locator(".home-headline").textContent()) ?? "";
     check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), `with no brief, Today says when it arrives (got "${note}")`);
     const liveTexts = (await p3.locator(".do-row .do-text").allTextContents()).join("|");
-    check(/^Answer 1 reply\|Approve \d+ drafts?\|Approve or dismiss 18 new leads$/.test(liveTexts), `with no brief, live items stand in for the focus session (${liveTexts})`);
+    check(/^Answer 1 reply\|Send \d+ emails?\|Approve or dismiss 18 new leads$/.test(liveTexts), `with no brief, live items stand in for the focus session (${liveTexts})`);
     check((await p3.locator(".sendline").textContent()) === "Emails go out when you press Send (via Apollo).", "with no brief, the sending line still says Send sends via Apollo");
     check(await p3.locator(".home-calls").count() === 0, "with no brief, there is no calls or digest panel");
     // No brief but one email went out: the line reports that send, without promising the batch times.
@@ -1003,9 +1020,10 @@ try {
     await p.locator(".mrow").first().waitFor();
     await p.waitForTimeout(500);
     check((await p.locator("#approve .deck-hint").textContent())?.includes("Emails go out when you press Send"), `the deck agrees (${name})`);
-    const sendSaved = p.locator("#approve .deck-sendnow button");
-    await sendSaved.first().waitFor();
-    check((await sendSaved.first().textContent())?.includes("Send 1 saved for later"), `emails saved for later can be sent in one go (${name})`);
+    const older = p.locator("#approve .old-approved summary");
+    await older.waitFor();
+    check((await older.textContent())?.includes("Older approved (pre-27 Oct style)") && await p.locator("#approve .old-approved").getAttribute("open") === null, `older approved emails sit folded under the deck (${name})`);
+    check(await p.getByText(/saved for later/).count() === 0, `nothing offers to send saved-for-later emails in one go (${name})`);
     check(await p.locator("#approve .deck-card").getByRole("button", { name: "Send", exact: true }).count() === 1, `the Today deck card has Send (${name})`);
     await p.screenshot({ path: path.join(v3, `today-send-on-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `today-send-on-${name}-full.png`), fullPage: true });
