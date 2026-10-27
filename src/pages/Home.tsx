@@ -76,10 +76,11 @@ export default function Home() {
   const [done, toggleDone] = useDone(day);
 
   const brief: Brief | null = briefQ.data ?? null;
-  const sendEnabled = brief?.send_enabled ?? null;
+  // Sending is judged from what actually went out (an email sent in the last weekday day), not from a flag.
+  const sendEnabled = liveQ.data?.sendLive ?? null;
   const owed = repliesOwed(brief?.replies ?? [], repliedQ.data ?? []);
   const live = liveQ.data ? liveItems({ ...liveQ.data, replies: owed.length }, sendEnabled) : [];
-  const { now: session, overflow } = focusSession(briefItems(brief?.do_now ?? []), live);
+  const { now: session, overflow } = focusSession(briefItems(brief?.do_now ?? [], liveQ.data ?? null), live);
   const could = couldDo(overflow, brief?.could_do ?? []);
   const forClaude = session.filter((d) => d.action.kind === "claude" && !done.has(d.key));
   const waiting = briefQ.loading && !briefQ.data;
@@ -97,7 +98,7 @@ export default function Home() {
         )}
         <p className={`sendline ${isSendOn(sendEnabled) ? "is-on" : "is-off"}`} role="status">
           <span className="sendline-dot" aria-hidden />
-          {waiting ? "Checking whether sending is on…" : sendStatusText(sendEnabled)}
+          {liveQ.loading && !liveQ.data ? "Checking recent sends…" : sendStatusText(sendEnabled)}
         </p>
       </header>
 

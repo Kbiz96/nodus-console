@@ -41,7 +41,7 @@ type Done = { text: string; ok: boolean };
 /**
  * One draft at a time. Email: approve (the send batch sends it at the next slot when sending is on), skip or edit.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
- * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `sendEnabled` comes from today's brief.
+ * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `sendEnabled`: whether an email actually went out in the last weekday day.
  */
 export default function Deck({ priorities, priorityId = null, opportunityId = null, onChanged, emailOnly = false, sendEnabled = null }: {
   priorities: Priority[];

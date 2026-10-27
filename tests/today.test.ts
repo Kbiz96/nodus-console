@@ -1,19 +1,32 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SEND_OFF_TEXT, SEND_ON_TEXT, approvedText, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
+  SEND_IDLE_TEXT, SEND_ON_TEXT, approvedText, isSendLive, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
   sendStatusText, splitLinkedIn,
 } from "../src/lib/today.ts";
 import { briefAction, focusSession, briefItems, liveItems, parseBrief, sessionPrompt } from "../src/lib/brief.ts";
 
-test("send status: only an explicit true says emails go out; false, missing or odd values say paused", () => {
+test("send status: only a known-live send says emails go out; otherwise it says none went out in the last day", () => {
   assert.equal(sendStatusText(true), "Approved emails go out at 09:53, 12:53 and 15:53.");
   assert.equal(sendStatusText(true), SEND_ON_TEXT);
-  for (const v of [false, null, undefined, "true", 1, {}]) assert.equal(sendStatusText(v), SEND_OFF_TEXT);
-  assert.equal(SEND_OFF_TEXT, "Sending is paused. Approved emails wait until Kuran turns sending on (ask Claude: 'turn sending on').");
+  for (const v of [false, null, undefined, "true", 1, {}]) assert.equal(sendStatusText(v), SEND_IDLE_TEXT);
+  assert.equal(SEND_IDLE_TEXT, "No emails sent in the last day.");
   assert.equal(approvedText("Alex", true, "12:53 today"), "Approved Alex. Sends at 12:53 today.");
-  assert.equal(approvedText("Alex", null, "12:53 today"), "Approved Alex. It waits until sending is turned on.");
-  assert.equal(approvedText(null, false, "x"), "Approved the email. It waits until sending is turned on.");
+  assert.equal(approvedText("Alex", null, "12:53 today"), "Approved Alex. Queued for the next send batch.");
+  assert.ok(!approvedText(null, false, "x").includes("turned on"));
+});
+
+test("sending is live when an email went out in the last weekday day", () => {
+  const tue = new Date("2026-10-27T14:00:00Z");
+  assert.equal(isSendLive(["2026-10-27T10:55:00Z"], tue), true);
+  assert.equal(isSendLive(["2026-10-26T13:00:00Z"], tue), false);
+  assert.equal(isSendLive([null, undefined, "nope"], tue), false);
+  assert.equal(isSendLive([], tue), false);
+  // Monday morning: Friday's 15:53 batch still counts.
+  const mon = new Date("2026-10-26T08:00:00Z");
+  assert.equal(isSendLive(["2026-10-23T14:53:00Z"], mon), true);
+  assert.equal(isSendLive(["2026-10-22T14:53:00Z"], mon), false);
+  assert.ok(sendWindowStart(mon).getTime() <= Date.parse("2026-10-23T08:00:00Z"));
 });
 
 test("the brief carries send_enabled and replies; unknown stays unknown", () => {
@@ -29,9 +42,9 @@ test("the brief carries send_enabled and replies; unknown stays unknown", () => 
   assert.equal(parseBrief({ send_enabled: false }).send_enabled, false);
   assert.equal(parseBrief({}).send_enabled, null);
   // the live drafts item repeats the honest line
-  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 }, false)[0].detail, SEND_OFF_TEXT);
+  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 }, false)[0].detail, SEND_IDLE_TEXT);
   assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 }, true)[0].detail, SEND_ON_TEXT);
-  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 })[0].detail, SEND_OFF_TEXT);
+  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 })[0].detail, SEND_IDLE_TEXT);
 });
 
 test("focus session: the brief's items (three at most), Gmail links open the draft, one Claude chat for the rest", () => {

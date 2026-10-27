@@ -89,7 +89,7 @@ export default function Layout({ email, onSignOut, children }: { email: string |
     remember("nodus-rail-more", v ? "open" : "closed");
   };
 
-  const count = (to: string) => (to === "/" && status.drafts > 0 ? <span className="nav-count" title={`${status.drafts} drafts waiting for approval`}>{status.drafts}</span> : null);
+  const count = (to: string) => (to === "/" && status.drafts > 0 ? <span className="nav-count" title={`${status.drafts} email drafts waiting for approval`}>{status.drafts}</span> : null);
   const engineHere = engineTabOf(location.pathname, location.search) !== null;
   const link = (i: Item) => {
     const Ic = Icon[i.icon];
@@ -269,7 +269,8 @@ function useStatus(path: string): Status {
   useEffect(() => {
     let live = true;
     Promise.all([
-      headCount("outreach", (q) => q.eq("status", "draft")),
+      // Email drafts only: the same set the Approve deck on Today shows (LinkedIn is sent by hand from its own panel).
+      headCount("outreach", (q) => q.eq("status", "draft").eq("channel", "email")),
       headCount("ai_tasks", (q) => q.eq("status", "pending")),
       headCount("matches", (q) => q.eq("status", "proposed")),
       headCount("sources", (q) => q.eq("enabled", true).eq("auto_disabled", false)),

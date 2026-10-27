@@ -18,7 +18,7 @@ export interface Brief {
   digest: string[];
   rep: { q: string; a: string } | null;
   replies: BriefReply[];
-  /** Whether the send batch is switched on: true or false as the brief says, null when the brief does not say. */
+  /** Legacy: the brief's own flag. The console no longer trusts it; sending is judged from outreach rows (sendLiveLoad). */
   send_enabled: boolean | null;
 }
 
@@ -112,10 +112,12 @@ export interface LiveCounts {
   mandateLeads: number;
   /** New Background BD leads (no priority). */
   backgroundLeads: number;
-  /** Drafts and LinkedIn messages waiting in Review. */
+  /** Email drafts waiting for approval (what the Approve deck shows). */
   drafts: number;
   /** Replies that need an answer. */
   replies: number;
+  /** An email actually went out in the last weekday day; null when unknown. */
+  sendLive?: boolean | null;
 }
 
 function plural(n: number, one: string, many: string): string {
@@ -163,8 +165,60 @@ export function briefAction(item: BriefItem): { action: DoAction; cta: string } 
   return { action: { kind: "claude", prompt: `Nodus command: ${item.text.replace(/[.\s]+$/, "")}.` }, cta: "Do it with Claude" };
 }
 
-export function briefItems(items: BriefItem[]): DoItem[] {
-  return items.map((d, i) => ({ key: `brief-${i}`, text: d.text, ...briefAction(d), live: false, urgent: false }));
+/** Links the brief writes that point nowhere useful: the front page itself, or the old Review queue. */
+const VAGUE_LINK = /^#?\/?(review)?\/?$/i;
+
+/** The console place a brief item is about, judged from its words; null when it is not recognisable. */
+export function briefRoute(text: string): DoAction | null {
+  const t = text.toLowerCase();
+  if (/\b(drafts?|review queue|approve)\b/.test(t) && !/\bleads?\b/.test(t)) return { kind: "scroll", target: "approve" };
+  if (/\bleads?\b/.test(t) && /\b(approve|dismiss|new)\b/.test(t)) return { kind: "route", to: "/leads" };
+  if (/^(reply|answer|respond)\b|\brepl(y|ies) to\b/.test(t)) return { kind: "scroll", target: "replies" };
+  if (/\b(chase|nudge|follow[- ]?up|call\b.*\bback)\b/.test(t)) return { kind: "route", to: "/pipeline" };
+  if (/\bmatch(es)?\b/.test(t)) return { kind: "route", to: "/engine" };
+  if (/\bmandate card\b/.test(t)) return { kind: "route", to: "/mandates" };
+  return null;
+}
+
+const CTA: Record<string, string> = { approve: "Approve", replies: "See replies", "/leads": "Go to leads", "/pipeline": "Open pipeline", "/engine": "Open board", "/mandates": "Open mandates" };
+
+/**
+ * The brief is written at 06:40; counts in it go stale as Kuran works. Swap "57 drafts waiting" for the live
+ * number (or drop the number when it is not known) and drop the "incl. 20 X and 30 Y" breakdown that went with it.
+ */
+export function freshText(text: string, live: Partial<LiveCounts> | null = null): string {
+  let t = text;
+  if (/\bdrafts?\b/i.test(t)) {
+    const n = live?.drafts;
+    t = t.replace(/\b\d[\d,]*\s+(email\s+)?drafts?(\s+waiting)?/i, (_m, _e, w) =>
+      typeof n === "number" ? `${n.toLocaleString("en-GB")} ${n === 1 ? "draft" : "drafts"}${w ?? ""}` : `drafts${w ?? ""}`);
+    t = t.replace(/,?\s*\(?incl(\.|uding)\s[^.)]*\d[^.)]*\)?/i, "");
+  }
+  if (/\bnew leads?\b/i.test(t) && live && typeof live.mandateLeads === "number" && typeof live.backgroundLeads === "number") {
+    const n = live.mandateLeads + live.backgroundLeads;
+    t = t.replace(/\b\d[\d,]*\s+new leads?\b/i, `${n.toLocaleString("en-GB")} new ${n === 1 ? "lead" : "leads"}`);
+  }
+  return t.replace(/\s+([.,;:])/g, "$1").replace(/\s{2,}/g, " ").trim();
+}
+
+/** One brief item, with vague links ("#/", "#/review") routed to the right console place and stale counts refreshed. */
+export function briefItem(d: BriefItem, i: number, live: Partial<LiveCounts> | null = null): DoItem {
+  const link = (d.link ?? "").trim();
+  const text = freshText(d.text, live);
+  if (link && VAGUE_LINK.test(link)) {
+    const to = briefRoute(d.text);
+    if (to) {
+      const k = to.kind === "scroll" ? to.target : to.kind === "route" ? to.to : "";
+      return { key: `brief-${i}`, text, action: to, cta: CTA[k] ?? "Open", live: false, urgent: false };
+    }
+    // A vague console link that matches nothing: better a Claude hand-off than a button to the page you are on.
+    return { key: `brief-${i}`, text, ...briefAction({ text, link: null }), live: false, urgent: false };
+  }
+  return { key: `brief-${i}`, text, ...briefAction({ text, link: d.link }), live: false, urgent: false };
+}
+
+export function briefItems(items: BriefItem[], live: Partial<LiveCounts> | null = null): DoItem[] {
+  return items.map((d, i) => briefItem(d, i, live));
 }
 
 export const DO_NOW_MAX = 3;

@@ -138,3 +138,23 @@ test("background BD prompts and chips", () => {
   assert.equal(lineChip("compute"), "Compute");
   assert.equal(lineChip(null), null);
 });
+
+test("brief items: vague links ('#/', '#/review') go to the right console place, stale counts become live", () => {
+  const live = { mandateLeads: 3, backgroundLeads: 2, drafts: 12, replies: 0 };
+  const [a, b, c, d, e] = briefItems([
+    { text: "Review queue: 57 drafts waiting, incl. 20 Al-Risha investor drafts and 30 DIGGERS blind RFQs.", link: "#/review" },
+    { text: "Reply to Makho on Project A: honest status of the blind brief.", link: "#/" },
+    { text: "Approve or dismiss the 37 new leads (Al-Risha, convertible)", link: "#/" },
+    { text: "Pick the first-wave investors to send to Mark", link: "#/" },
+    { text: "Open the deals list", link: "#/deals" },
+  ], live);
+  assert.deepEqual(a.action, { kind: "scroll", target: "approve" });
+  assert.equal(a.text, "Review queue: 12 drafts waiting.");
+  assert.deepEqual(b.action, { kind: "scroll", target: "replies" });
+  assert.deepEqual(c.action, { kind: "route", to: "/leads" });
+  assert.equal(c.text, "Approve or dismiss the 5 new leads (Al-Risha, convertible)");
+  assert.equal(d.action.kind, "claude");
+  assert.deepEqual(e.action, { kind: "route", to: "/deals" });
+  // Without live counts the stale number is dropped rather than shown.
+  assert.equal(briefItems([{ text: "Review queue: 57 drafts waiting.", link: "#/review" }])[0].text, "Review queue: drafts waiting.");
+});

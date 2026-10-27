@@ -4,17 +4,15 @@ import { fmtNumber } from "../lib/format.ts";
 import Deck from "../components/Deck.tsx";
 import { useTitle } from "../components/ui.tsx";
 import { usePriorities } from "./Leads.tsx";
-import { briefLoad } from "../lib/data.ts";
+import { sendLiveLoad } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
-import { ukToday } from "../lib/crm.ts";
 
 /** The review deck on its own: one draft at a time, optionally for one priority. */
 export default function Review() {
   useTitle("Review");
   const [sp] = useSearchParams();
   const { data, reload } = usePriorities();
-  const day = ukToday();
-  const { data: brief } = useLoad(() => briefLoad(day), `brief-${day}`);
+  const { data: sendLive } = useLoad(() => sendLiveLoad(), "send-live");
   const priorities = data?.priorities ?? [];
   const active = activeInOrder(priorities);
   const pid = sp.get("priority");
@@ -43,7 +41,7 @@ export default function Review() {
           ))}
         </nav>
       )}
-      <Deck key={opp ? `opp-${opp}` : pid ?? "all"} priorities={priorities} priorityId={opp ? null : pid} opportunityId={opp} onChanged={reload} sendEnabled={brief?.send_enabled ?? null} />
+      <Deck key={opp ? `opp-${opp}` : pid ?? "all"} priorities={priorities} priorityId={opp ? null : pid} opportunityId={opp} onChanged={reload} sendEnabled={sendLive ?? null} />
     </div>
   );
 }

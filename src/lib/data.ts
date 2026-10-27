@@ -9,6 +9,7 @@ import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
 import { LEAD_COLS, decisionPatch, type Lead, type LeadStatus } from "./leads.ts";
+import { isSendLive, sendWindowStart } from "./today.ts";
 import { briefIsEmpty, parseBrief, type Brief, type LiveCounts, type PipelineCounts } from "./brief.ts";
 
 export const MATCH_CARD_COLS =
@@ -318,16 +319,36 @@ async function countOf(build: () => PromiseLike<{ count: number | null; error: {
   }
 }
 
+/** Email drafts waiting for approval: exactly what the Approve deck on Today shows (LinkedIn has its own panel). */
+export function emailDraftCount(): Promise<number | null> {
+  return countOf(() => supabase.from("outreach").select("id", { count: "exact", head: true }).eq("status", "draft").eq("channel", "email"));
+}
+
+/** Whether the send batch is actually sending: an email marked sent in the last weekday day. Null when unreadable. */
+export async function sendLiveLoad(now = new Date()): Promise<boolean | null> {
+  const res = await supabase
+    .from("outreach")
+    .select("sent_at")
+    .eq("status", "sent")
+    .eq("channel", "email")
+    .gte("sent_at", sendWindowStart(now).toISOString())
+    .order("sent_at", { ascending: false })
+    .limit(20);
+  if (res.error) return null;
+  return isSendLive(((res.data ?? []) as { sent_at: string | null }[]).map((r) => r.sent_at), now);
+}
+
 /** The counts behind the live Do now items. Anything unreadable counts as zero, so the page still renders. */
 export async function liveCountsLoad(): Promise<LiveCounts> {
   const head = { count: "exact" as const, head: true };
-  const [mandateLeads, backgroundLeads, drafts, replies] = await Promise.all([
+  const [mandateLeads, backgroundLeads, drafts, replies, sendLive] = await Promise.all([
     countOf(() => supabase.from("lead_candidates").select("id", head).eq("status", "new").not("priority_id", "is", null)),
     countOf(() => supabase.from("lead_candidates").select("id", head).eq("status", "new").is("priority_id", null)),
-    countOf(() => supabase.from("outreach").select("id", head).in("status", ["draft", "manual"])),
+    emailDraftCount(),
     countOf(() => supabase.from("outreach").select("id", head).eq("status", "replied")),
+    sendLiveLoad().catch(() => null),
   ]);
-  return { mandateLeads: mandateLeads ?? 0, backgroundLeads: backgroundLeads ?? 0, drafts: drafts ?? 0, replies: replies ?? 0 };
+  return { mandateLeads: mandateLeads ?? 0, backgroundLeads: backgroundLeads ?? 0, drafts: drafts ?? 0, replies: replies ?? 0, sendLive };
 }
 
 /** bd_queue by tier: A is routed to a signed mandate, B is the background queue. */
