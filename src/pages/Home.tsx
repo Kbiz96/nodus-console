@@ -9,7 +9,7 @@ import { remember } from "../lib/calm.ts";
 import { withoutParked } from "../lib/mandates.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { briefItems, briefMissingNote, couldDo, focusSession, liveItems, sessionPrompt, type Brief, type DoItem } from "../lib/brief.ts";
-import { isSendOn, repliesOwed, sendState, sendStatusText, type OwedRow } from "../lib/today.ts";
+import { repliesOwed, sendState, sendStatusText, type OwedRow } from "../lib/today.ts";
 import type { Outreach } from "../lib/types.ts";
 import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { AskClaude } from "../components/PriorityCard.tsx";
@@ -76,8 +76,8 @@ export default function Home() {
   const [done, toggleDone] = useDone(day);
 
   const brief: Brief | null = briefQ.data ?? null;
-  // The brief's send_enabled wins when present; otherwise only what actually went out (last email sent in the last weekday day).
-  const sendEnabled = sendState(brief?.send_enabled ?? null, liveQ.data?.lastSentAt ?? null);
+  // Sending is a press of Send (via Apollo); the line also says when the last email went out, when known.
+  const sendEnabled = sendState(liveQ.data?.lastSentAt ?? null);
   const owed = repliesOwed(brief?.replies ?? [], repliedQ.data ?? []);
   const live = liveQ.data ? liveItems({ ...liveQ.data, replies: owed.length }, sendEnabled) : [];
   const { now: session, overflow } = focusSession(briefItems(brief?.do_now ?? [], liveQ.data ?? null), live);
@@ -96,9 +96,9 @@ export default function Home() {
         ) : (
           <h1 className="home-headline is-quiet" aria-busy={waiting || undefined}>{waiting ? "Getting today’s brief…" : brief ? "Here’s what moves money today." : briefMissingNote(now)}</h1>
         )}
-        <p className={`sendline ${isSendOn(sendEnabled) ? "is-on" : "is-off"}`} role="status">
+        <p className="sendline is-on" role="status">
           <span className="sendline-dot" aria-hidden />
-          {(waiting || (liveQ.loading && !liveQ.data)) ? "Checking whether sending is on…" : sendStatusText(sendEnabled)}
+          {sendStatusText(sendEnabled)}
         </p>
       </header>
 

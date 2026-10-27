@@ -1430,3 +1430,15 @@ details.deck-why p { margin: 0.45rem 0 0; color: var(--ink-2); font-size: 14px; 
 .deck-all-list li { padding: 0.15rem 0; overflow-wrap: anywhere; }
 .deck-all .btn { white-space: normal; text-align: left; max-width: 100%; height: auto; }
 .deck-sendnow { display: flex; flex-wrap: wrap; gap: 0.5rem 0.8rem; align-items: center; margin: 0.2rem 0 0.4rem; }
+.apollo-note { margin: 0.4rem 0 0; font-size: 0.88rem; color: var(--warn); overflow-wrap: anywhere; flex-basis: 100%; }
+.apollo-note.is-setup { color: var(--ink-2); border-left: 2px solid var(--warn); padding-left: 0.6rem; }
+.apollo-note a { margin-left: 0.3rem; }
+.find-results { display: flex; flex-direction: column; gap: 0.5rem; border-top: 1px solid var(--line-soft); padding-top: 0.7rem; }
+.find-results > p { margin: 0; }
+.find-h { font-size: 0.95rem; margin: 0.4rem 0 0; }
+.find-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid var(--line-soft); }
+.find-row { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; justify-content: space-between; align-items: flex-start; padding: 0.6rem 0; border-bottom: 1px solid var(--line-soft); }
+.find-what { flex: 1 1 18rem; min-width: 0; overflow-wrap: anywhere; }
+.find-what p { margin: 0 0 0.15rem; }
+.find-what .badge { margin-left: 0.4rem; }
+.find-acts { display: flex; flex-wrap: wrap; gap: 0.4rem; }

@@ -59,6 +59,9 @@ const session = { access_token: token, token_type: "bearer", expires_in: 3600, e
 
 const rpcCalls = [];
 const writes = [];
+/** Calls to the nodus-apollo Edge Function, and whether it should answer as if no Apollo key were set. */
+const fnCalls = [];
+const fnState = { missingKey: false };
 function fake(approved, data = fx) {
   return async (route) => {
     const req = route.request();
@@ -74,6 +77,26 @@ function fake(approved, data = fx) {
     }
     if (u.pathname === "/auth/v1/user") return json(200, user);
     if (u.pathname === "/auth/v1/logout") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*" } });
+    if (u.pathname === "/functions/v1/nodus-apollo") {
+      const body = req.postDataJSON?.() ?? {};
+      fnCalls.push(body);
+      if (fnState.missingKey && body.action !== "find") return json(200, { ok: false, reason: "missing_api_key", message: "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY" });
+      if (body.action === "send") return json(200, { ok: true, contact_id: "apc1", sequence: { key: "capital", id: "6ae0955be36fa500181c4307", name: "Capital / investors", from: "kuran@nodus.partners" }, followups_missing: [] });
+      if (body.action === "enrich") return json(200, { ok: true, email: "jo.bloggs@example-infra.com", email_status: "verified", contact_id: "cc1", credits: 1 });
+      if (body.action === "find") {
+        const people = fnState.missingKey ? [] : [
+          { apollo_id: "ap1", name: "Jo Bloggs", title: "Partner", company: "Example Infra Partners", domain: "example-infra.com", linkedin: null, country: "United Kingdom", has_email: true, size_evidence: "320 employees (Apollo)", why: "Partner at Example Infra Partners; investor organisation (Apollo keyword tags)", known: false, lead_candidate_id: "lc1" },
+          { apollo_id: "ap2", name: "Sam Example", title: "Managing Director", company: "Example Family Office", domain: null, linkedin: null, country: null, has_email: null, size_evidence: null, why: "Managing Director at Example Family Office", known: false, lead_candidate_id: "lc2" },
+        ];
+        return json(200, {
+          ok: true, mandate: { id: "m1", label: "C36 capital ask (capital)" }, added: people.length, parsed: {},
+          engine: [{ match_id: "bbbbbbbb-0000-4000-8000-000000000002", tier: "heaven", score: 91, pair_type: "capital", why: "Example Energy needs a convertible note ↔ Example Credit Partners has private credit", mandate_code: "C36", need_side: { name: "Example Energy" }, supply_side: { name: "Example Credit Partners" } }],
+          people, note: fnState.missingKey ? null : "Apollo has no fund-size filter: $100m+ is screened by organisation type and scale.",
+          ...(fnState.missingKey ? { apollo_skipped: "missing_api_key", message: "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY" } : {}),
+        });
+      }
+      return json(200, { ok: false, reason: "unknown_action" });
+    }
     const m = u.pathname.match(/^\/rest\/v1\/(rpc\/)?([a-z_]+)$/);
     if (!m) return json(404, { message: "not mocked" });
     if (m[1]) {
@@ -178,8 +201,8 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(/Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".home-dateline").textContent()) ?? ""), at("Today greets Kuran"));
   await page.locator(".home-headline:not(.is-quiet)").waitFor();
   check((await page.locator(".home-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
-  check((await page.locator(".sendline").textContent()) === "Sending is paused. Approved emails wait.", at("send_enabled false: the sending line says paused"));
-  check(await page.getByText(/go out every hour/).count() === 0, at("nothing on Today claims a send time while sending is paused"));
+  check((await page.locator(".sendline").textContent()) === "Emails send when you press Send, via Apollo.", at("the sending line says Send sends via Apollo"));
+  check(await page.getByText(/go out every hour/).count() === 0, at("nothing on Today promises batch times"));
   // ---- Focus session: the brief's three items, one button each ----
   await page.locator(".do-row").nth(2).waitFor();
   const doTexts = await page.locator(".do-row .do-text").allTextContents();
@@ -218,12 +241,12 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(await why.locator("summary").textContent() === "Why this person" && await why.getAttribute("open") === null, at("the research card is folded under Why this person"));
   await why.locator("summary").click();
   check((await why.locator("p").textContent())?.startsWith("Head of Energy at Example Power"), at("Why this person opens the research card"));
-  check((await deck.locator(".deck-hint").textContent())?.includes("Sending is paused."), at("the deck repeats that sending is paused"));
-  for (const b of ["Approve", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
-  await deck.getByRole("button", { name: "Approve", exact: true }).click();
-  await deck.getByText("Approved Alex Example. Sending is paused, so it waits.").first().waitFor();
-  check(await page.locator(".toast", { hasText: "Approved Alex Example." }).getByRole("button", { name: "Undo" }).count() === 1, at("approving offers Undo"));
-  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Approve goes through outreach_decide"));
+  check((await deck.locator(".deck-hint").textContent())?.includes("Emails send when you press Send, via Apollo."), at("the deck says Send sends via Apollo"));
+  for (const b of ["Send", "Save for later", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
+  const fnBefore = fnCalls.length;
+  await deck.getByRole("button", { name: "Send", exact: true }).click();
+  await deck.getByText("Sent Alex Example via Apollo (Capital / investors sequence).").first().waitFor();
+  check(fnCalls.slice(fnBefore).some((c) => c.action === "send" && c.outreach_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Send calls the nodus-apollo function for this draft"));
   await deck.getByText("All done. Nothing else is waiting for you.").waitFor();
   check(await deck.getByRole("link", { name: /Ask Claude/ }).count() === 0, at("the empty deck on Today offers no extra Claude chat"));
   // ---- LinkedIn: connected people only; the rest wait for a connection ----
@@ -553,9 +576,9 @@ async function focusFlow(browser, label, viewport) {
   check(/1\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("Review shows 1 of 3 (email and LinkedIn)"));
   check(await page.locator(".deck-card .ptag").textContent() === "Priority 1: Al-Risha phase 1: find the offtaker", at("priority-tagged draft comes first"));
   if (label === "desktop") await page.keyboard.press("a");
-  else await page.getByRole("button", { name: "Approve", exact: true }).click();
+  else await page.getByRole("button", { name: "Save for later", exact: true }).click();
   await page.locator(".deck-last").waitFor();
-  check((await page.locator(".deck-last").textContent()) === "Approved Alex Example. Sending is paused, so it waits.", at("with sending paused, approving says it waits (no send time is claimed)"));
+  check((await page.locator(".deck-last").textContent()) === "Saved Alex Example for later. Press Send when you're ready.", at("Save for later says so and does not send"));
   check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at(`${label === "desktop" ? "A key" : "Approve"} goes through outreach_decide`));
   check(/2\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("the deck moves on to 2 of 3"));
   await page.evaluate(() => {
@@ -882,12 +905,12 @@ try {
     check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), `with no brief, Today says when it arrives (got "${note}")`);
     const liveTexts = (await p3.locator(".do-row .do-text").allTextContents()).join("|");
     check(/^Answer 1 reply\|Approve \d+ drafts?\|Approve or dismiss 18 new leads$/.test(liveTexts), `with no brief, live items stand in for the focus session (${liveTexts})`);
-    check((await p3.locator(".sendline").textContent()) === "No emails sent in the last day.", "with no brief and nothing sent, sending is never claimed");
+    check((await p3.locator(".sendline").textContent()) === "Emails send when you press Send, via Apollo.", "with no brief, the sending line still says Send sends via Apollo");
     check(await p3.locator(".home-calls").count() === 0, "with no brief, there is no calls or digest panel");
     // No brief but one email went out: the line reports that send, without promising the batch times.
     nb.tables.outreach = [...fx.tables.outreach, { id: "eeeeeeee-9999-4000-8000-000000000001", kind: "email", channel: "email", status: "sent", sent_at: new Date(Date.now() - 2 * 3600e3).toISOString(), to_name: "Sent Today", created_at: new Date(Date.now() - 30 * 3600e3).toISOString() }];
     await p3.reload();
-    await p3.locator(".sendline:not(.is-on)", { hasText: /^Last email went out / }).waitFor();
+    await p3.locator(".sendline", { hasText: /Last email went out / }).waitFor();
     check(await p3.getByText(/go out every hour/).count() === 0, "a lone real send never turns into a promise of the batch times");
     await p3.screenshot({ path: path.join(frontShots, "front-no-brief-phone.png") });
     await ctx3.close();
@@ -950,18 +973,18 @@ try {
     await p.evaluate(() => window.scrollTo(0, 0));
     await p.screenshot({ path: path.join(v3, `today-send-off-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `today-send-off-${name}-full.png`), fullPage: true });
-    big.tables.daily_briefs = [dailyBrief(ukDay, true)];
     if (!big.tables.outreach.some((o) => o.id === "eeeeeeee-7777-4000-8000-000000000001")) big.tables.outreach = [...big.tables.outreach, { id: "eeeeeeee-7777-4000-8000-000000000001", kind: "email", channel: "email", status: "approved", to_email: "approved@example.com", to_name: "Approved Person", body: "x", created_at: new Date(Date.now() - 3 * 3600e3).toISOString(), approved_at: new Date(Date.now() - 3600e3).toISOString(), sent_at: null, replied_at: null, priority_id: null }];
     await p.reload();
-    await p.locator(".sendline.is-on").waitFor();
-    check((await p.locator(".sendline").textContent()) === "Approved emails go out every hour at :53, 09:53 to 17:53 on weekdays.", `send_enabled true: the sending line gives the slots (${name})`);
+    await p.locator(".sendline").waitFor();
+    check((await p.locator(".sendline").textContent())?.startsWith("Emails send when you press Send, via Apollo."), `the sending line says Send sends via Apollo (${name})`);
     await p.locator("#approve .deck-card").waitFor();
     await p.locator(".mrow").first().waitFor();
     await p.waitForTimeout(500);
-    check((await p.locator("#approve .deck-hint").textContent())?.includes("Approved emails go out every hour"), `the deck agrees when sending is on (${name})`);
-    const sendNow = p.locator("#approve .deck-sendnow a");
-    await sendNow.waitFor();
-    check(await sendNow.count() === 1 && (await sendNow.textContent())?.includes("Send now (1 approved)") && decodeURIComponent((await sendNow.getAttribute("href")) ?? "").includes("Send now: send every outreach row with status approved"), `Send now hands the approved email to Claude (${name})`);
+    check((await p.locator("#approve .deck-hint").textContent())?.includes("Emails send when you press Send"), `the deck agrees (${name})`);
+    const sendSaved = p.locator("#approve .deck-sendnow button");
+    await sendSaved.first().waitFor();
+    check((await sendSaved.first().textContent())?.includes("Send 1 saved for later"), `emails saved for later can be sent in one go (${name})`);
+    check(await p.locator("#approve .deck-card").getByRole("button", { name: "Send", exact: true }).count() === 1, `the Today deck card has Send (${name})`);
     await p.screenshot({ path: path.join(v3, `today-send-on-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `today-send-on-${name}-full.png`), fullPage: true });
     if (name === "phone") {
@@ -1105,10 +1128,24 @@ try {
     await p.screenshot({ path: path.join(v3, `engine-board-${name}.png`) });
     await p.screenshot({ path: path.join(v3, `engine-board-${name}-full.png`), fullPage: true });
     check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `the board has no sideways scrolling (${name})`);
+    fnState.missingKey = false;
+    await p.getByRole("button", { name: "Capital partners for Al-Risha" }).click();
+    await p.locator(".find-results").waitFor();
+    check(fnCalls.some((c) => c.action === "find" && c.query === "Capital partners for Al-Risha"), `a quick Find chip calls the Apollo function at once (${name})`);
+    check(await p.locator(".find-results .find-row").count() === 3, `Find shows the engine match first, then two Apollo people (${name})`);
+    check((await p.locator(".find-results").textContent())?.includes("Size: 320 employees (Apollo)"), `Find shows size evidence (${name})`);
+    await p.getByRole("button", { name: "Enrich email (1 credit)" }).first().click();
+    await p.getByText("jo.bloggs@example-infra.com").waitFor();
+    check(fnCalls.some((c) => c.action === "enrich" && c.lead_candidate_id === "lc1"), `Enrich reveals one email through the function (${name})`);
+    check(await p.locator(".find-results").getByRole("link", { name: "Draft" }).count() === 2, `each Apollo person has Draft (${name})`);
+    await p.waitForTimeout(300);
+    await p.screenshot({ path: path.join(v3, `engine-board-find-${name}.png`), fullPage: true });
+    fnState.missingKey = true;
     await p.getByRole("button", { name: "Offtakers for 70 MW MENA" }).click();
-    await p.getByText("Queued — results appear on the board after the next engine run.").waitFor();
-    check(writes.some((w) => w.table === "find_requests" && w.method === "POST" && w.body.query === "Offtakers for 70 MW MENA"), `a quick Find chip queues a find request (${name})`);
-    check(await p.getByRole("link", { name: "Run it now with Claude" }).count() === 1, `a queued Find offers Run it now with Claude (${name})`);
+    await p.locator(".apollo-note.is-setup").waitFor();
+    check((await p.locator(".apollo-note.is-setup").textContent()) === "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY", `without a key, Find shows the one-line setup note (${name})`);
+    check(await p.getByRole("link", { name: "Run it now with Claude" }).count() === 1, `without a key, Find stays queued with Run it now with Claude (${name})`);
+    fnState.missingKey = false;
     await p.goto(`${base}#/mandates`);
     await p.getByRole("heading", { name: "Your mandates" }).waitFor();
     await p.waitForTimeout(400);

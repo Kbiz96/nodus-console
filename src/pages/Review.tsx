@@ -4,8 +4,7 @@ import { fmtNumber } from "../lib/format.ts";
 import Deck from "../components/Deck.tsx";
 import { useTitle } from "../components/ui.tsx";
 import { usePriorities } from "./Leads.tsx";
-import { briefLoad, lastSentLoad } from "../lib/data.ts";
-import { ukToday } from "../lib/crm.ts";
+import { lastSentLoad } from "../lib/data.ts";
 import { sendState } from "../lib/today.ts";
 import { useLoad } from "../lib/useLoad.ts";
 
@@ -14,8 +13,6 @@ export default function Review() {
   useTitle("Review");
   const [sp] = useSearchParams();
   const { data, reload } = usePriorities();
-  const day = ukToday();
-  const { data: brief } = useLoad(() => briefLoad(day), `brief-${day}`);
   const { data: lastSent } = useLoad(() => lastSentLoad(), "last-sent");
   const priorities = data?.priorities ?? [];
   const active = activeInOrder(priorities);
@@ -45,7 +42,7 @@ export default function Review() {
           ))}
         </nav>
       )}
-      <Deck key={opp ? `opp-${opp}` : pid ?? "all"} priorities={priorities} priorityId={opp ? null : pid} opportunityId={opp} onChanged={reload} sendEnabled={sendState(brief?.send_enabled ?? null, lastSent ?? null)} />
+      <Deck key={opp ? `opp-${opp}` : pid ?? "all"} priorities={priorities} priorityId={opp ? null : pid} opportunityId={opp} onChanged={reload} sendEnabled={sendState(lastSent ?? null)} />
     </div>
   );
 }

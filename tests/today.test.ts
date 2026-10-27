@@ -1,34 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  SEND_IDLE_TEXT, SEND_OFF_TEXT, SEND_ON_TEXT, approvedText, sendNowPrompt, lastSentIn, sendState, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
+  SEND_TEXT, savedText, sentText, lastSentIn, sendState, sendWindowStart, connectionNote, isConnected, nudgePrompt, overdueLabel, pipelineRows, repliesOwed,
   sendStatusText, splitLinkedIn,
 } from "../src/lib/today.ts";
 import { briefAction, focusSession, briefItems, liveItems, parseBrief, sessionPrompt } from "../src/lib/brief.ts";
 
-test("send status: the brief's flag wins; without it, only the last real send is reported, never the batch times", () => {
-  assert.equal(sendStatusText({ kind: "on" }), SEND_ON_TEXT);
-  assert.equal(SEND_ON_TEXT, "Approved emails go out every hour at :53, 09:53 to 17:53 on weekdays.");
-  assert.equal(sendStatusText({ kind: "off" }), SEND_OFF_TEXT);
-  assert.equal(SEND_OFF_TEXT, "Sending is paused. Approved emails wait.");
-  assert.equal(sendStatusText({ kind: "none" }), SEND_IDLE_TEXT);
-  assert.equal(sendStatusText(null), SEND_IDLE_TEXT);
-  assert.equal(SEND_IDLE_TEXT, "No emails sent in the last day.");
-  assert.equal(sendStatusText({ kind: "last", at: "2026-10-27T10:55:25Z" }), "Last email went out Tue 27 Oct, 10:55.");
-  assert.deepEqual(sendState(true, "2026-10-27T10:55:25Z"), { kind: "on" });
-  assert.deepEqual(sendState(false, "2026-10-27T10:55:25Z"), { kind: "off" });
-  assert.deepEqual(sendState(null, "2026-10-27T10:55:25Z"), { kind: "last", at: "2026-10-27T10:55:25Z" });
-  assert.deepEqual(sendState(undefined, null), { kind: "none" });
-  assert.equal(approvedText("Alex", { kind: "on" }, "12:53 today"), "Approved Alex. Sends at 12:53 today.");
-  assert.equal(approvedText("Alex", { kind: "off" }, "12:53 today"), "Approved Alex. Sending is paused, so it waits.");
-  assert.equal(approvedText(null, { kind: "none" }, "x"), "Approved the email. It waits for the send batch.");
-  assert.ok(!approvedText("Alex", { kind: "last", at: "2026-10-27T10:55:25Z" }, "x").includes("12:53"));
-});
-
-test("Send now hands the approved ids to one Claude chat", () => {
-  const p = sendNowPrompt(["a1", "b2"]);
-  assert.ok(p.startsWith("Send now: send every outreach row with status approved, channel email and to_email set (ids: a1, b2) exactly as approved, via Gmail send_message, waiting 60s between sends, then select outreach_mark(id,'sent',thread_id) for each."));
-  assert.ok(p.endsWith("Skip anyone do_not_contact, Replied, Meeting, Declined or Bounced. Report sent/skipped counts."));
+test("sending line: press Send, Apollo does the rest; plus the last real send when known", () => {
+  assert.equal(SEND_TEXT, "Emails send when you press Send, via Apollo.");
+  assert.equal(sendStatusText(null), SEND_TEXT);
+  assert.equal(sendStatusText({ kind: "none" }), SEND_TEXT);
+  assert.equal(sendStatusText({ kind: "last", at: "2026-10-27T10:55:25Z" }), "Emails send when you press Send, via Apollo. Last email went out Tue 27 Oct, 10:55.");
+  assert.deepEqual(sendState("2026-10-27T10:55:25Z"), { kind: "last", at: "2026-10-27T10:55:25Z" });
+  assert.deepEqual(sendState(null), { kind: "none" });
+  assert.ok(!sendStatusText({ kind: "none" }).includes(":53"));
+  assert.equal(savedText("Alex"), "Saved Alex for later. Press Send when you're ready.");
+  assert.equal(sentText("Alex", "Capital / investors"), "Sent Alex via Apollo (Capital / investors sequence).");
 });
 
 test("the last real send within the last weekday day", () => {
@@ -57,9 +44,8 @@ test("the brief carries send_enabled and replies; unknown stays unknown", () => 
   assert.equal(parseBrief({ send_enabled: false }).send_enabled, false);
   assert.equal(parseBrief({}).send_enabled, null);
   // the live drafts item repeats the honest line
-  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 }, { kind: "off" })[0].detail, SEND_OFF_TEXT);
-  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 }, { kind: "on" })[0].detail, SEND_ON_TEXT);
-  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 })[0].detail, SEND_IDLE_TEXT);
+  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 }, { kind: "none" })[0].detail, SEND_TEXT);
+  assert.equal(liveItems({ mandateLeads: 0, backgroundLeads: 0, drafts: 2, replies: 0 })[0].detail, SEND_TEXT);
 });
 
 test("focus session: the brief's items (three at most), Gmail links open the draft, one Claude chat for the rest", () => {

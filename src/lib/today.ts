@@ -7,26 +7,17 @@ import type { CrmContact, Deal, Outreach } from "./types.ts";
 
 // ---------- sending ----------
 
-export const SEND_ON_TEXT = "Approved emails go out every hour at :53, 09:53 to 17:53 on weekdays.";
-export const SEND_OFF_TEXT = "Sending is paused. Approved emails wait.";
-export const SEND_IDLE_TEXT = "No emails sent in the last day.";
+/** Sending is one press: Send on a draft puts it into the right Apollo sequence, and Apollo sends it and the follow-ups. */
+export const SEND_TEXT = "Emails send when you press Send, via Apollo.";
 
-/**
- * Whether approved emails are going out. The morning brief's send_enabled flag wins when it is present (true or
- * false). When the brief does not say, the console only reports what it can see: when the last email actually
- * went out (status sent, sent_at set) within the last weekday day, or that none did. It never promises the batch
- * times on that evidence alone: a manual send looks the same as a batch send.
- */
-export type SendState = { kind: "on" } | { kind: "off" } | { kind: "last"; at: string } | { kind: "none" };
+/** What the console knows about recent sending: when the last email went out (last weekday day), or nothing. */
+export type SendState = { kind: "last"; at: string } | { kind: "none" };
 
 const ukWeekday = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short" });
 const ukWhen = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 const isWeekend = (d: Date) => ["Sat", "Sun"].includes(ukWeekday.format(d));
 
-/**
- * Where "the last day" starts: 24 hours back, stretched over any weekend (the send batch runs on weekdays only),
- * so on a Monday morning Friday's sends still count.
- */
+/** Where "the last day" starts: 24 hours back, stretched over any weekend, so on a Monday morning Friday's sends still count. */
 export function sendWindowStart(now = new Date()): Date {
   let t = now.getTime() - 24 * 3600e3;
   for (let i = 0; i < 3 && isWeekend(new Date(t)); i++) t -= 24 * 3600e3;
@@ -44,45 +35,27 @@ export function lastSentIn(sentAts: (string | null | undefined)[], now = new Dat
   return best === null ? null : new Date(best).toISOString();
 }
 
-/** The brief's flag first (true/false); otherwise what the outreach rows show. */
-export function sendState(briefFlag: boolean | null | undefined, lastSentAt: string | null | undefined): SendState {
-  if (briefFlag === true) return { kind: "on" };
-  if (briefFlag === false) return { kind: "off" };
+export function sendState(lastSentAt: string | null | undefined): SendState {
   return lastSentAt ? { kind: "last", at: lastSentAt } : { kind: "none" };
 }
 
-/** True only when the brief says sending is on. Unknown counts as not on: the console never claims a send it cannot vouch for. */
-export function isSendOn(v: SendState | null | undefined): boolean {
-  return v?.kind === "on";
-}
-
-/** The one line that says whether approved emails will actually go out. */
+/** The one sending line: press Send, Apollo does the rest; plus when the last email went out, when known. */
 export function sendStatusText(v: SendState | null | undefined): string {
-  if (!v) return SEND_IDLE_TEXT;
-  if (v.kind === "on") return SEND_ON_TEXT;
-  if (v.kind === "off") return SEND_OFF_TEXT;
-  if (v.kind === "last") {
+  if (v?.kind === "last") {
     const t = Date.parse(v.at);
-    return Number.isFinite(t) ? `Last email went out ${ukWhen.format(new Date(t))}.` : SEND_IDLE_TEXT;
+    if (Number.isFinite(t)) return `${SEND_TEXT} Last email went out ${ukWhen.format(new Date(t))}.`;
   }
-  return SEND_IDLE_TEXT;
+  return SEND_TEXT;
 }
 
-/** What Approve says afterwards. */
-export function approvedText(name: string | null, v: SendState | null | undefined, slotLabel: string): string {
-  const who = name || "the email";
-  if (v?.kind === "on") return `Approved ${who}. Sends at ${slotLabel}.`;
-  if (v?.kind === "off") return `Approved ${who}. Sending is paused, so it waits.`;
-  return `Approved ${who}. It waits for the send batch.`;
+/** What "Save for later" says afterwards. */
+export function savedText(name: string | null): string {
+  return `Saved ${name || "the email"} for later. Press Send when you're ready.`;
 }
 
-/** "Send now": one Claude chat that sends the approved emails through Gmail and marks them sent. The console itself never sends. */
-export function sendNowPrompt(ids: string[]): string {
-  return (
-    `Send now: send every outreach row with status approved, channel email and to_email set (ids: ${ids.join(", ")}) exactly as approved, ` +
-    "via Gmail send_message, waiting 60s between sends, then select outreach_mark(id,'sent',thread_id) for each. " +
-    "Skip anyone do_not_contact, Replied, Meeting, Declined or Bounced. Report sent/skipped counts."
-  );
+/** What Send says afterwards. */
+export function sentText(name: string | null, sequence: string | null): string {
+  return `Sent ${name || "the email"} via Apollo${sequence ? ` (${sequence} sequence)` : ""}.`;
 }
 
 export function isGmailUrl(url: string | null | undefined): boolean {

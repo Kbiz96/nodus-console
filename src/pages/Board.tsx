@@ -8,6 +8,8 @@ import { EngineTabs } from "../components/EngineTabs.tsx";
 import { AskClaude } from "../components/PriorityCard.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { toast } from "../components/Toast.tsx";
+import { ApolloNote } from "../components/Deck.tsx";
+import { apolloEnrich, apolloFailText, apolloFind, draftPrompt, type ApolloFail, type FindOk, type FindPerson } from "../lib/apollo.ts";
 import { Empty, ErrorBox, Loading, PageHead, useTitle } from "../components/ui.tsx";
 
 const QUICK = [
@@ -189,14 +191,31 @@ function BoardCard({ r, onNotFit }: { r: BoardRow; onNotFit: () => void }) {
 function FindBar() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
-  const [queued, setQueued] = useState<{ id: string; query: string } | null>(null);
+  const [queued, setQueued] = useState<{ id: string | null; query: string } | null>(null);
+  const [res, setRes] = useState<{ query: string; data: FindOk } | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  const runClaude = (query: string, id: string | null) =>
+    `Run Find: "${query}"${id ? ` (find_requests id ${id})` : ""} per ORIGINATION-PROMPT via scripts/bridge.sh find`;
+
+  // Find runs at once through Apollo (the function also records it in find_requests). If the function cannot be
+  // reached, the request is queued for the engine's next run instead, as before.
   const submit = async (text: string) => {
     const query = text.trim();
     if (!query || busy) return;
     setBusy(true);
     setErr(null);
+    setQueued(null);
+    setRes(null);
+    const r = await apolloFind(query);
+    if (r.ok) {
+      setRes({ query, data: r });
+      if (r.apollo_skipped) setQueued({ id: null, query });
+      setQ("");
+      setBusy(false);
+      return;
+    }
+    if (r.reason !== "unreachable") setErr(apolloFailText(r).text);
     try {
       const id = await findRequestAdd(query);
       setQueued({ id, query });
@@ -219,7 +238,7 @@ function FindBar() {
           <span>Find</span>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Who needs what? e.g. capital partners for Al-Risha" maxLength={300} aria-label="Find in plain English" />
         </label>
-        <button className="btn primary" type="submit" disabled={busy || !q.trim()}>{busy ? "Queuing…" : "Find"}</button>
+        <button className="btn primary" type="submit" disabled={busy || !q.trim()}>{busy ? "Finding…" : "Find"}</button>
       </form>
       <div className="chips">
         {QUICK.map((t) => (
@@ -227,14 +246,87 @@ function FindBar() {
         ))}
       </div>
       {err && <p className="error small" role="alert">{err}</p>}
+      {res && <FindResults query={res.query} r={res.data} />}
       {queued && (
         <div className="board-queued" role="status">
           <p className="ok small">Queued — results appear on the board after the next engine run.</p>
-          <AskClaude className="btn small" prompt={`Run Find: "${queued.query}" (find_requests id ${queued.id}) per ORIGINATION-PROMPT via scripts/bridge.sh find`}>
+          <AskClaude className="btn small" prompt={runClaude(queued.query, queued.id)}>
             <Icon.claude />Run it now with Claude
           </AskClaude>
         </div>
       )}
     </section>
+  );
+}
+
+function FindResults({ query, r }: { query: string; r: FindOk }) {
+  const about = r.mandate ? `${r.mandate.label} (${query})` : query;
+  return (
+    <div className="find-results" aria-live="polite">
+      <p className="small muted">
+        {r.mandate ? <>For <strong>{r.mandate.label}</strong>. </> : null}
+        {fmtNumber(r.engine.length)} from the engine, {fmtNumber(r.people.length)} from Apollo{r.added ? `, ${fmtNumber(r.added)} new added to leads` : ""}.
+      </p>
+      {r.apollo_skipped === "missing_api_key" && <ApolloNote fail={{ ok: false, reason: "missing_api_key" }} />}
+      {r.note && <p className="note small">{r.note}</p>}
+      {r.engine.length > 0 && (
+        <>
+          <h3 className="find-h">Engine matches</h3>
+          <ul className="find-list">
+            {r.engine.map((m) => (
+              <li key={m.match_id} className="find-row">
+                <div className="find-what">
+                  <p><span className={`pill ${m.tier === "heaven" ? "pill-good" : "pill-wait"}`}>{TIER_LABEL[m.tier ?? ""] ?? m.tier} {Number(m.score ?? 0).toFixed(0)}</span>{" "}
+                    <strong>{m.need_side?.name ?? "Need"}</strong> ↔ <strong>{m.supply_side?.name ?? "Supply"}</strong></p>
+                  {m.why && <p className="muted small">{m.why.trim().replace(/[;,]\s*$/, "")}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {r.people.length > 0 && (
+        <>
+          <h3 className="find-h">People from Apollo</h3>
+          <ul className="find-list">
+            {r.people.map((p) => <PersonRow key={p.apollo_id} p={p} about={about} />)}
+          </ul>
+        </>
+      )}
+    </div>
+  );
+}
+
+function PersonRow({ p, about }: { p: FindPerson; about: string }) {
+  const [email, setEmail] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [fail, setFail] = useState<ApolloFail | null>(null);
+  const enrich = async () => {
+    if (!p.lead_candidate_id || busy) return;
+    setBusy(true);
+    setFail(null);
+    const r = await apolloEnrich(p.lead_candidate_id);
+    setBusy(false);
+    if (r.ok) setEmail(r.email);
+    else setFail(r);
+  };
+  return (
+    <li className="find-row">
+      <div className="find-what">
+        <p><strong>{p.name || "Unnamed"}</strong>{p.title && <span className="muted">, {p.title}</span>}{p.company && <> at {p.company}</>}{p.known && <span className="badge">Already known</span>}</p>
+        <p className="muted small">{p.why}</p>
+        <p className="small">{p.size_evidence ? <>Size: {p.size_evidence}</> : <span className="muted">Size: no evidence in Apollo</span>}</p>
+        {email && <p className="mono small">{email}</p>}
+        {fail && <ApolloNote fail={fail} />}
+      </div>
+      <div className="find-acts">
+        {!email && p.lead_candidate_id && (
+          <button type="button" className="btn small" disabled={busy} onClick={() => void enrich()} title="Reveals the business email in Apollo: 1 credit">
+            {busy ? "Enriching…" : "Enrich email (1 credit)"}
+          </button>
+        )}
+        <AskClaude className="btn small primary" prompt={draftPrompt(p, email, about)}><Icon.claude />Draft</AskClaude>
+      </div>
+    </li>
   );
 }

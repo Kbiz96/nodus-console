@@ -134,7 +134,7 @@ export function liveItems(c: LiveCounts, send: SendState | null = null): DoItem[
     out.push({ key: "live-replies", text: `Answer ${plural(c.replies, "reply", "replies")}`, detail: "Someone wrote back.", cta: "See replies", action: { kind: "scroll", target: "replies" }, live: true, urgent: true });
   }
   if (c.drafts > 0) {
-    out.push({ key: "live-drafts", text: `Approve ${plural(c.drafts, "draft", "drafts")}`, detail: sendStatusText(send), cta: "Approve", action: { kind: "scroll", target: "approve" }, live: true, urgent: true });
+    out.push({ key: "live-drafts", text: `Approve ${plural(c.drafts, "draft", "drafts")}`, detail: sendStatusText(send), cta: "Review and send", action: { kind: "scroll", target: "approve" }, live: true, urgent: true });
   }
   const leads = c.mandateLeads + c.backgroundLeads;
   if (leads > 0) {
