@@ -7,6 +7,7 @@ import { friendlyError } from "../lib/rules.ts";
 import { remember } from "../lib/calm.ts";
 import type { Outreach } from "../lib/types.ts";
 import { Icon } from "./Brand.tsx";
+import { AskClaude } from "./PriorityCard.tsx";
 import { toast } from "./Toast.tsx";
 
 const HIDE_KEY = "nodus-li-requested";
@@ -24,8 +25,12 @@ export function LinkedInPanel() {
   const [gone, setGone] = useState<Set<string>>(() => hiddenIds());
   const [showNotes, setShowNotes] = useState(false);
   const notes = useMemo(() => new Map([...(data?.contacts ?? new Map<string, LiContact>()).values()].map((c) => [c.id, c.notes])), [data]);
-  const rows = (data?.rows ?? []).filter((r) => !gone.has(r.id));
+  const [lane, setLane] = useState<Lane>("ALL");
+  const [showComments, setShowComments] = useState(true);
+  const all = (data?.rows ?? []).filter((r) => !gone.has(r.id));
+  const rows = all.filter((r) => lane === "ALL" || laneOf(r) === lane);
   const { ready, waiting } = splitLinkedIn(rows, notes);
+  const comments = rows.filter((r) => r.kind === "comment");
   const hide = (id: string, keep = false) => {
     const next = new Set(gone).add(id);
     setGone(next);
@@ -39,6 +44,22 @@ export function LinkedInPanel() {
 
   return (
     <div className="li-panel">
+      <AgentBar lane={lane} setLane={setLane} counts={laneCounts(all)} />
+      {comments.length > 0 && (
+        <div className="li-wait">
+          <div className="li-wait-head">
+            <p><b>{fmtNumber(comments.length)}</b> posts to comment on</p>
+            <button type="button" className="btn small" aria-expanded={showComments} onClick={() => setShowComments((v) => !v)}>
+              {showComments ? "Hide comments" : "Show comments"}
+            </button>
+          </div>
+          {showComments && (
+            <ul className="li-list">
+              {comments.map((o) => <CommentRow key={o.id} o={o} onDone={() => hide(o.id, true)} />)}
+            </ul>
+          )}
+        </div>
+      )}
       {ready.length === 0 ? (
         <p className="li-none">No DMs ready for people you are connected to.</p>
       ) : (
@@ -132,6 +153,84 @@ function NoteRow({ o, contact, profile, onDone }: { o: Outreach; contact: LiCont
         <button type="button" className="btn small" disabled={!note} onClick={copy}>Copy</button>
         {profile && <a className="btn small" href={profile} target="_blank" rel="noopener noreferrer">Open profile<Icon.external /></a>}
         <button type="button" className="btn small" disabled={busy} onClick={() => void done()}>{busy ? "Saving…" : "Request sent"}</button>
+      </div>
+    </li>
+  );
+}
+
+// ---------- LinkedIn agent (on demand) ----------
+
+type Lane = "ALL" | "CAPITAL" | "COMPUTE" | "OPERATORS";
+const LANES: { k: Lane; label: string }[] = [
+  { k: "ALL", label: "What we need now" },
+  { k: "CAPITAL", label: "Capital" },
+  { k: "COMPUTE", label: "Compute" },
+  { k: "OPERATORS", label: "Operators" },
+];
+
+/** Drafts written by the LinkedIn agent start their note with "LI: <LANE> · ...". */
+export function laneOf(o: Pick<Outreach, "note">): Lane | null {
+  const m = /^LI:\s*(CAPITAL|COMPUTE|OPERATORS)\b/.exec((o.note ?? "").trim());
+  return m ? (m[1] as Lane) : null;
+}
+
+function laneCounts(rows: Outreach[]): Record<Lane, number> {
+  const c: Record<Lane, number> = { ALL: rows.length, CAPITAL: 0, COMPUTE: 0, OPERATORS: 0 };
+  for (const r of rows) { const l = laneOf(r); if (l) c[l] += 1; }
+  return c;
+}
+
+export function agentPrompt(lane: Lane): string {
+  const lanes = lane === "ALL" ? "whatever the live mandates and priorities need most (capital, compute and operators)" : lane.toLowerCase();
+  return [
+    `Nodus LinkedIn agent: run the nodus-linkedin-agent skill now in my Chrome (Claude in Chrome extension). Lane: ${lanes}.`,
+    "Find leads among my existing 1st-degree connections and new people, qualify them against the live mandates, and write DM drafts (connected) or connection notes (not connected) into the console.",
+    "Also find 25 recent posts worth commenting on (my lanes, last 7 days) and draft a comment for each.",
+    "Read-only and human-paced: never click Connect, Message, Like, Comment or Send; at least 15 s between pages, 40 pages max. I send everything myself.",
+  ].join("\n");
+}
+
+function AgentBar({ lane, setLane, counts }: { lane: Lane; setLane: (l: Lane) => void; counts: Record<Lane, number> }) {
+  return (
+    <div className="li-agent">
+      <div className="li-agent-lanes" role="group" aria-label="Lane">
+        {LANES.map((l) => (
+          <button key={l.k} type="button" className={`btn small${lane === l.k ? " primary" : ""}`} aria-pressed={lane === l.k} onClick={() => setLane(l.k)}>
+            {l.label}{l.k !== "ALL" && counts[l.k] > 0 ? ` (${fmtNumber(counts[l.k])})` : ""}
+          </button>
+        ))}
+      </div>
+      <AskClaude prompt={agentPrompt(lane)} className="btn primary">Run LinkedIn agent</AskClaude>
+      <p className="muted small">Opens Claude with the instruction ready: press Enter, with Chrome and the Claude extension open. Drafts and comments land here.</p>
+    </div>
+  );
+}
+
+function CommentRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const post = safeHref(o.link);
+  const copy = () => toast(copyNow(o.body ?? "") ? "Copied. Paste it under the post, then press Commented." : "Your browser would not copy it.");
+  const done = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (o.status !== "manual") await outreachDecide(o.id, "approve");
+      await outreachMarkSent(o.id);
+      outreachChanged();
+      onDone();
+    } catch (e) {
+      toast(friendlyError(e), false);
+      setBusy(false);
+    }
+  };
+  return (
+    <li className="li-row">
+      <Who o={o} />
+      <p className="li-msg">{o.body || "(no text)"}</p>
+      <div className="li-acts">
+        <button type="button" className="btn small" onClick={copy}>Copy</button>
+        {post && <a className="btn small" href={post} target="_blank" rel="noopener noreferrer">Open post<Icon.external /></a>}
+        <button type="button" className="btn small primary" disabled={busy} onClick={() => void done()}>{busy ? "Saving…" : "Commented"}</button>
       </div>
     </li>
   );
