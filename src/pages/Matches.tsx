@@ -7,6 +7,7 @@ import { fmtNumber } from "../lib/format.ts";
 import type { MatchCardRow } from "../lib/types.ts";
 import MatchCard from "../components/MatchCard.tsx";
 import FilterBar from "../components/FilterBar.tsx";
+import { EngineTabs } from "../components/EngineTabs.tsx";
 import { Empty, ErrorBox, Loading, Pager, useTitle } from "../components/ui.tsx";
 
 const PAGE = 25;
@@ -51,10 +52,7 @@ export default function Matches() {
 
   return (
     <div className="stack">
-      <nav className="tabs" aria-label="Match views">
-        <Link to="/engine">Engine view</Link>
-        <Link to="/matches" className="active" aria-current="page">List</Link>
-      </nav>
+      <EngineTabs />
       <div className="section-head page-head-block">
         <span className="eyebrow">Pipeline</span>
         <h1>Matches</h1>

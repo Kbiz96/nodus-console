@@ -34,6 +34,7 @@ import { toast } from "./Toast.tsx";
 import { Icon } from "./Brand.tsx";
 import { ErrorBox } from "./ui.tsx";
 import { LeadQueue } from "./LeadQueue.tsx";
+import { useHandoffs } from "./handoff.ts";
 
 const NET_FIRST = 5;
 const NET_MAX = 15;
@@ -48,8 +49,10 @@ type PeopleTab = "leads" | "network";
  * One signed mandate: the paper (from the linked deal), the deal's next step, and one workstream per priority.
  * Two priorities on the same mandate (Al-Risha offtakers and investors) share one card with a switch.
  */
-export function MandateCard({ g, deals, progress, all, onChanged, defaultOpen = true }: {
+export function MandateCard({ g, deals, progress, all, onChanged, defaultOpen = true, alwaysOpen = false }: {
   g: MandateGroup<Priority>;
+  /** Open regardless of what was remembered (Today opens the card from its one-line row). */
+  alwaysOpen?: boolean;
   /** Open on first visit; after that the card remembers what Kuran chose. */
   defaultOpen?: boolean;
   deals: Map<string, Deal>;
@@ -65,7 +68,7 @@ export function MandateCard({ g, deals, progress, all, onChanged, defaultOpen = 
   const [leadSent, setLeadSent] = useState<PerPriority>({});
   const { over, decideLeads } = useLeadDecide();
   const openKey = `nodus-mcard-open-${g.key}`;
-  const [open, setOpenState] = useState(() => (remember(openKey) ?? (defaultOpen ? "1" : "0")) === "1");
+  const [open, setOpenState] = useState(() => alwaysOpen || (remember(openKey) ?? (defaultOpen ? "1" : "0")) === "1");
   const setOpen = (v: boolean) => { remember(openKey, v ? "1" : "0"); setOpenState(v); };
   const memberIds = g.members.map((m) => m.id).sort();
   const leadsQ = useLoad(() => leadsLoad(memberIds), `leads-${memberIds.join(",")}`);
@@ -207,6 +210,7 @@ function Workstream({ id, labelledBy, p, pr, above, below, showTail, onChanged, 
   leadSent: string[];
   onLeadSent: (ids: string[]) => void;
 }) {
+  const handoffs = useHandoffs();
   const [editing, setEditing] = useState(false);
   const [netCount, setNetCount] = useState<number | null>(null);
   const drafts = (pr?.drafts ?? 0) + (pr?.manual ?? 0);
@@ -227,15 +231,16 @@ function Workstream({ id, labelledBy, p, pr, above, below, showTail, onChanged, 
           <ProgressStrip pr={pr} />
           {p.next_action && <p className="pcard-next"><span>Next</span>{p.next_action}</p>}
           <div className="pcard-actions">
-            {supply ? (
+            {handoffs && (supply ? (
               <AskClaude prompt={quotesPrompt(p)}><Icon.claude />Ask Claude: get quotes</AskClaude>
             ) : (
               <AskClaude prompt={priorityPrompt(p)}><Icon.claude />Ask Claude</AskClaude>
-            )}
-            {drafts > 0 && (
+            ))}
+            {handoffs && drafts > 0 && (
               <Link className="btn big" to={`/review?priority=${p.id}`}>Review {fmtNumber(drafts)} {drafts === 1 ? "draft" : "drafts"}</Link>
             )}
-            <AskMenu p={p} extra={supply ? [{ label: "Run the next action", prompt: priorityPrompt(p) }] : []} />
+            {!handoffs && <Link className="btn" to="/leads">Work this mandate’s leads</Link>}
+            {handoffs && <AskMenu p={p} extra={supply ? [{ label: "Run the next action", prompt: priorityPrompt(p) }] : []} />}
           </div>
           <PeopleTabs
             p={p}
@@ -316,6 +321,7 @@ function NetworkList({ p, picked, onPick, sent, onSent, onCount }: {
   onSent: (ids: string[]) => void;
   onCount: (n: number | null) => void;
 }) {
+  const handoffs = useHandoffs();
   const { data, error, loading, reload } = useLoad(async () => {
     const [rows, ds] = await Promise.all([priorityNetwork(p.id, NET_ASK), networkDismissals([p.id])]);
     return { rows, ds };
@@ -470,8 +476,8 @@ function NetworkList({ p, picked, onPick, sent, onSent, onCount }: {
           </p>
           <div className="net-batch-acts">
             <button type="button" className="btn" onClick={() => void notNow(sel)}>Not now for {fmtNumber(n)}</button>
-            <button type="button" className="btn" onClick={emailThem}><Icon.claude />Enrich &amp; email {fmtNumber(n)}</button>
-            <button type="button" className="btn primary" onClick={draft}><Icon.claude />Draft for {fmtNumber(n)} selected</button>
+            {handoffs && <button type="button" className="btn" onClick={emailThem}><Icon.claude />Enrich &amp; email {fmtNumber(n)}</button>}
+            {handoffs && <button type="button" className="btn primary" onClick={draft}><Icon.claude />Draft for {fmtNumber(n)} selected</button>}
           </div>
         </div>
       )}

@@ -41,7 +41,7 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
       if (what !== "skip") setSaved({ subject, body });
       setMsg({
         ok: true,
-        text: what === "approve" ? (isEmail ? "Approved. The send job will send it within the daily limit." : "Approved. It is now under LinkedIn to send.") : what === "edit" ? "Edit saved." : "Skipped.",
+        text: what === "approve" ? (isEmail ? "Approved. It goes out with the next send batch only if sending is on (Today shows which)." : "Approved. It is now under LinkedIn to send.") : what === "edit" ? "Edit saved." : "Skipped.",
       });
       outreachChanged();
       onChanged();

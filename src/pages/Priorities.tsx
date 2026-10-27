@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { PriorityCard } from "../components/PriorityCard.tsx";
 import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
-import { PriorityList, usePriorities } from "./Focus.tsx";
+import { PriorityList, usePriorities } from "./Leads.tsx";
 
 /** Every priority: the live ones to edit and reorder, then paused and done ones to bring back. */
 export default function Priorities() {

@@ -14,6 +14,7 @@ import BestNext from "../components/BestNext.tsx";
 import { ALL_STAGES, STAGES, STAGE_COLOUR, STAGE_LABEL, type SeqOpp, type Stage } from "../lib/sequencer.ts";
 import { stagesFor } from "../lib/sequencer-data.ts";
 import { shownStage, useSeqState } from "../lib/stageStore.ts";
+import { EngineTabs } from "../components/EngineTabs.tsx";
 import { Empty, ErrorBox, ExtLink, GateBadge, LineBadge, Loading, PageHead, ScoreBars, StatusBadge, Swatch, useTitle } from "../components/ui.tsx";
 
 const LOAD_CAP = 400;
@@ -112,13 +113,7 @@ export default function Engine() {
       <PageHead
         eyebrow="Matchmaking engine"
         title="Engine"
-        actions={
-          <nav className="tabs" aria-label="Match views">
-            <Link to="/engine" className={best ? undefined : "active"} aria-current={best ? undefined : "page"}>Engine view</Link>
-            <Link to="/engine?best=1" className={best ? "active" : undefined} aria-current={best ? "page" : undefined}>Best to work next</Link>
-            <Link to="/matches">List</Link>
-          </nav>
-        }
+        actions={<EngineTabs />}
       >
         {best
           ? "The 20 opportunities most worth working, routed to a mandate first. Work them top-down: one click takes each to drafted."

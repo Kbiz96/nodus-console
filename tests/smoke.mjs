@@ -114,7 +114,9 @@ function fake(approved, data = fx) {
     if (idEq?.startsWith("in.(")) { const set = idEq.slice(4, -1).split(",").map((x) => x.replace(/"/g, "")); rows = rows.filter((r) => set.includes(r.id)); }
     const lineEq = u.searchParams.get("line");
     if (lineEq?.startsWith("eq.")) rows = rows.filter((r) => r.line === lineEq.slice(3));
-    const statusEq = u.searchParams.get("status");
+    // An approved LinkedIn draft becomes "manual" in the real database; the fixture rows do not change, so a
+    // status-guarded update on outreach matches by id alone.
+    const statusEq = req.method() === "PATCH" && table === "outreach" ? null : u.searchParams.get("status");
     if (statusEq?.startsWith("eq.")) rows = rows.filter((r) => r.status === statusEq.slice(3));
     if (statusEq?.startsWith("in.(")) { const set = statusEq.slice(4, -1).split(","); rows = rows.filter((r) => !r.status || set.includes(r.status)); }
     const prioEq = u.searchParams.get("priority_id");
@@ -152,7 +154,142 @@ fs.mkdirSync(shots, { recursive: true });
 
 const P1 = "abababab-0000-4000-8000-000000000001";
 
-/** Focus, Review and Priorities on the small fixture: every button that writes, at one width. */
+/** Today, the front page: focus session, replies owed, the approve deck, LinkedIn, signed mandates as rows. */
+async function todayFlow(page, label, at, newRpc, newWrites) {
+  await page.goto(base);
+  await page.getByRole("heading", { name: "Focus session" }).waitFor();
+  check(/Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".home-dateline").textContent()) ?? ""), at("Today greets Kuran"));
+  await page.locator(".home-headline:not(.is-quiet)").waitFor();
+  check((await page.locator(".home-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
+  check((await page.locator(".sendline").textContent()) === "Sending is paused. Approved emails wait until Kuran turns sending on (ask Claude: 'turn sending on').", at("send_enabled false: the sending line says paused"));
+  check(await page.getByText(/go out at 09:53/).count() === 0, at("nothing on Today claims a send time while sending is paused"));
+  // ---- Focus session: the brief's three items, one button each ----
+  await page.locator(".do-row").nth(2).waitFor();
+  const doTexts = await page.locator(".do-row .do-text").allTextContents();
+  check(JSON.stringify(doTexts) === JSON.stringify(["Send the Al-Risha teaser to the three warmest neoclouds", "Chase the Basalt fee letter before Thursday", "Confirm the 14:00 agenda with Brightwater"]), at("the focus session is the brief's three items, in order"));
+  const r1 = page.locator(".do-row").first();
+  check(await r1.getByRole("link", { name: "Open draft in Gmail" }).getAttribute("href") === "https://mail.google.com/mail/u/0/#drafts?compose=fixture-teaser" && await r1.locator(".btn.primary").count() === 1, at("a Gmail link opens the draft in Gmail, as the one primary action"));
+  check(await r1.getByRole("link", { name: "Open draft in Gmail" }).getAttribute("target") === "_blank", at("Gmail opens in a new tab"));
+  check(await page.locator(".do-row").nth(1).locator(".do-go").count() === 0, at("an item with no link has no button of its own"));
+  check(await page.locator(".do-row").nth(2).getByRole("link", { name: "Open" }).getAttribute("href") === "https://example.com/brightwater-agenda", at("an outside link opens"));
+  const claudeLinks = page.locator('a[href^="https://claude.ai/new"]');
+  check(await claudeLinks.count() === 1, at("Today has exactly one Claude hand-off"));
+  const sq = new URL((await claudeLinks.first().getAttribute("href")) ?? "https://x");
+  check((await claudeLinks.first().textContent())?.includes("Hand the unlinked item to Claude") && sq.searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && (sq.searchParams.get("q") ?? "").startsWith("Nodus command: focus session. Do these one for me in order") && (sq.searchParams.get("q") ?? "").includes("\n1. Chase the Basalt fee letter before Thursday"), at("the one hand-off covers the unlinked item in the Nodus project"));
+  await page.getByRole("button", { name: "Done: Chase the Basalt fee letter before Thursday" }).click();
+  check(await page.locator(".do-row.is-done").count() === 1 && await claudeLinks.count() === 0, at("ticking the unlinked item off removes the hand-off"));
+  await page.getByRole("button", { name: "Not done: Chase the Basalt fee letter before Thursday" }).click();
+  check(await page.locator(".do-row.is-done").count() === 0 && await claudeLinks.count() === 1, at("and un-ticking brings it back"));
+  check((await page.locator(".calls li").count()) === 2 && (await page.locator(".calls li").first().textContent())?.startsWith("10:30Harlow Compute (CEO)"), at("Calls today lists time, who and goal"));
+  await page.locator(".could summary").click();
+  check(JSON.stringify(await page.locator(".could li").allTextContents()) === JSON.stringify(["Comment on two GTC Berlin posts from capital allocators", "Tidy the Optio borrower list"]), at("Could do holds the brief's ideas"));
+  await page.locator(".brief-more summary").click();
+  check(await page.locator(".digest-list li").count() === 4, at("the digest shows at most four lines, folded"));
+  await page.locator(".rep").getByRole("button", { name: "Show answer" }).click();
+  check((await page.locator(".rep-a").textContent())?.startsWith("The seller’s revenue"), at("the 2-minute rep reveals its answer on tap"));
+  // ---- Replies owed ----
+  const owed = page.locator(".owed-row");
+  await owed.nth(2).waitFor();
+  check(await owed.count() === 3 && (await owed.first().locator(".owed-who").textContent()) === "Dana Reed at Penguin Cluster Co", at("replies owed: the brief's two, then the logged reply it does not mention"));
+  check(await owed.first().getByRole("link", { name: "Open draft in Gmail" }).getAttribute("href") === "https://mail.google.com/mail/u/0/#drafts?compose=fixture-dana", at("each brief reply opens its Gmail draft"));
+  check(await owed.nth(2).getByRole("link", { name: "Find in Gmail" }).getAttribute("href") === "https://mail.google.com/mail/u/0/#search/alex%40example.com", at("a logged reply with no draft finds the thread in Gmail"));
+  // ---- Approve: email only, research folded, honest hint ----
+  const deck = page.locator("#approve");
+  await deck.locator(".deck-card").waitFor();
+  check(/1\s*of\s*1/.test(await deck.locator(".deck-count").textContent() ?? ""), at("the approve deck shows emails only (LinkedIn has its own panel)"));
+  const why = deck.locator("details.deck-why");
+  check(await why.locator("summary").textContent() === "Why this person" && await why.getAttribute("open") === null, at("the research card is folded under Why this person"));
+  await why.locator("summary").click();
+  check((await why.locator("p").textContent())?.startsWith("Head of Energy at Example Power"), at("Why this person opens the research card"));
+  check((await deck.locator(".deck-hint").textContent())?.includes("Sending is paused."), at("the deck repeats that sending is paused"));
+  for (const b of ["Approve", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
+  await deck.getByRole("button", { name: "Approve", exact: true }).click();
+  await deck.getByText("Approved Alex Example. It waits until sending is turned on.").waitFor();
+  check(true, at("approving while paused says the email waits"));
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Approve goes through outreach_decide"));
+  await deck.getByText("All done. Nothing else is waiting for you.").waitFor();
+  check(await deck.getByRole("link", { name: /Ask Claude/ }).count() === 0, at("the empty deck on Today offers no extra Claude chat"));
+  // ---- LinkedIn: connected people only; the rest wait for a connection ----
+  const li = page.locator("#linkedin");
+  await li.locator(".li-row").first().waitFor();
+  check(await li.locator(".li-list").first().locator(".li-row").count() === 1 && (await li.locator(".li-row .li-who").first().textContent()) === "Priya Shah at Northwind Compute", at("only the connected person appears as a DM to send"));
+  check((await li.locator(".li-wait-head p").textContent()) === "1 waiting for connection (send a connection note)", at("everyone else is a count waiting for connection"));
+  check(await li.getByText("Hi Alex", { exact: false }).count() === 0, at("a DM to someone not connected is not shown"));
+  await li.getByRole("button", { name: "Show connection notes" }).click();
+  const note = li.locator(".li-wait .li-row");
+  check((await note.locator(".li-note").textContent()) === "Hi Alex, good to meet at DCD. We work on power and compute for AI campuses. Keen to connect.", at("the connection note is the text after the marker"));
+  await note.getByRole("button", { name: "Copy" }).click();
+  check(await page.evaluate(() => navigator.clipboard.readText()) === "Hi Alex, good to meet at DCD. We work on power and compute for AI campuses. Keen to connect.", at("Copy copies the connection note"));
+  check(await note.getByRole("link", { name: "Open profile" }).getAttribute("href") === "https://www.linkedin.com/in/alex-example", at("Open profile opens their LinkedIn"));
+  await note.getByRole("button", { name: "Request sent" }).click();
+  await page.getByText("Request sent to Alex Example.", { exact: false }).waitFor();
+  check(newWrites().some((w) => w.table === "crm_contacts" && w.method === "PATCH" && String(w.body.notes).includes("LinkedIn connection request sent")), at("Request sent notes it on the contact"));
+  const ready = li.locator(".li-row").first();
+  await ready.getByRole("button", { name: "Copy" }).click();
+  check(await page.evaluate(() => navigator.clipboard.readText()) === "Hi Priya, good to see you at DCD. Are you still sourcing 10 MW in the UK for Q2?", at("Copy copies the DM"));
+  await ready.getByRole("button", { name: "Mark sent" }).click();
+  await page.getByText("Marked sent to Priya Shah on LinkedIn.").waitFor();
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000004" && c.body.p_decision === "approve") && newWrites().some((w) => w.table === "outreach" && w.body.status === "sent"), at("Mark sent approves the draft and marks it sent"));
+  check(await li.getByText("No DMs ready for people you are connected to.").count() === 1, at("the DM leaves the list once sent"));
+  // ---- Signed mandates: one line each, open to the card ----
+  const rows = page.locator(".mrow");
+  await rows.nth(3).waitFor();
+  check(await rows.count() === 4 && (await rows.first().locator(".mrow-rank").textContent()) === "1", at("signed mandates are one-line rows, in rank order"));
+  await rows.first().locator(".mchip").first().waitFor();
+  check((await rows.first().locator(".mrow-chips").textContent())?.includes("Fee protected ✓"), at("a row carries its paperwork chips"));
+  check(await page.locator(".mcard").count() === 0, at("no full cards until a row is opened"));
+  await rows.first().locator(".mrow-line").click();
+  await rows.first().locator(".mcard").waitFor();
+  check(await rows.first().locator('.mcard a[href^="https://claude.ai"]').count() === 0 && await rows.first().getByRole("link", { name: "Work this mandate’s leads" }).first().getAttribute("href") === "#/leads", at("the opened card has no Claude buttons and points to the Leads desk"));
+  check(await claudeLinks.count() === 1, at("Today still has one Claude hand-off with a card open"));
+  await rows.first().locator(".mrow-line").click();
+  check(await page.locator(".mcard").count() === 0, at("the row folds again"));
+  check(await page.evaluate(() => document.documentElement.dataset.calm) === "on", at("calm mode is on by default on Today"));
+  check(await page.locator(".strip-cell", { hasText: "Sources live" }).count() === 0, at("calm mode hides the strip counters"));
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Today has no sideways scrolling"));
+}
+
+/** Pipeline: deals and warm contacts, stalled first, one Claude hand-off per row, Close as dead with Undo. */
+async function pipelineFlow(page, label, at, newWrites) {
+  await page.goto(`${base}#/pipeline`);
+  await page.getByRole("heading", { name: "Pipeline", exact: true }).waitFor();
+  const rows = page.locator(".pipe-row");
+  await rows.first().waitFor();
+  const names = await rows.locator(".pipe-name").allTextContents();
+  check(JSON.stringify(names) === JSON.stringify(["Alex Example", "Priya Shah", "Tom Reed", "Campus developer"]), at(`stalled first: overdue deal, then the warm contact with no date, then the rest (got ${names.join(", ")})`));
+  check(await rows.nth(0).locator(".pipe-late").textContent().then((t) => /^\d+ days overdue$/.test(t ?? "")) && (await rows.nth(1).locator(".pipe-late").textContent()) === "No date set", at("each row says how late it is"));
+  check(await rows.filter({ hasNot: page.locator(".pipe-late.is-late") }).count() === 2 && (await rows.first().locator(".pipe-next").textContent()) === "Send NCNDA", at("rows say what's next; two are not stalled"));
+  const nudges = page.getByRole("link", { name: "Draft the nudge" });
+  check(await nudges.count() === 4 && await page.locator('a[href^="https://claude.ai/new"]').count() === 4, at("every row has one Draft the nudge and nothing else opens Claude"));
+  const nq = new URL((await nudges.first().getAttribute("href")) ?? "https://x");
+  check(nq.searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && (nq.searchParams.get("q") ?? "").startsWith('Nodus command: draft the nudge to Alex Example at Example Power Ltd (alex@example.com) about the deal "Example 20 MW gensets", next step "Send NCNDA".') && (nq.searchParams.get("q") ?? "").includes("Save it as a Gmail draft in that same thread (do not send)"), at("Draft the nudge asks for a Gmail draft in the existing thread"));
+  const w0 = newWrites().length;
+  await rows.first().getByRole("button", { name: "Close as dead" }).click();
+  await page.getByText("Closed Example 20 MW gensets as lost.").waitFor();
+  check(newWrites().slice(w0).some((w) => w.table === "deals" && w.method === "PATCH" && w.body.stage === "Closed – lost"), at("Close as dead sets the deal to Closed – lost"));
+  check(!(await rows.locator(".pipe-name").allTextContents()).includes("Alex Example"), at("the closed deal leaves the list"));
+  await page.locator(".toast").getByRole("button", { name: "Undo" }).click();
+  await page.getByText("Undone.").waitFor();
+  check(newWrites().slice(w0).some((w) => w.table === "deals" && w.method === "PATCH" && w.body.stage === "Qualified") && (await rows.first().locator(".pipe-name").textContent()) === "Alex Example", at("Undo puts the deal back"));
+  await rows.nth(1).getByRole("button", { name: "Close as dead" }).click();
+  await page.getByText("Moved Priya Shah to Nurture.").waitFor();
+  check(newWrites().slice(w0).some((w) => w.table === "crm_contacts" && w.method === "PATCH" && w.body.stage === "Nurture"), at("Close as dead moves a contact to Nurture"));
+  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Pipeline has no sideways scrolling"));
+}
+
+/** Engine: one screen, four tabs (Map, Best next, Matches, List), the nav item lit on each. */
+async function engineTabsFlow(page, label, at) {
+  for (const [hash, tab] of [["engine?best=1", "Best next"], ["engine", "Matches"], ["opportunities", "List"], ["map", "Map"]]) {
+    await page.goto(`${base}#/${hash}`);
+    const bar = page.locator(".engine-tabs").first();
+    await bar.waitFor();
+    check(JSON.stringify(await bar.locator("a").allTextContents()) === JSON.stringify(["Map", "Best next", "Matches", "List"]) && (await bar.locator("a.active").textContent()) === tab, at(`Engine tabs: ${tab} is lit on #/${hash}`));
+    const nav = label === "phone" ? page.locator(".mnav") : page.locator(".rail-primary");
+    check((await nav.locator("a.active").textContent())?.replace(/\d+$/, "").trim() === "Engine", at(`the Engine nav item is lit on #/${hash}`));
+  }
+}
+
+/** Today, Leads desk, Review, Priorities, Pipeline and Engine on the small fixture: every button that writes, at one width. */
 async function focusFlow(browser, label, viewport) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: "en-GB", timezoneId: "Europe/London" });
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
@@ -168,35 +305,13 @@ async function focusFlow(browser, label, viewport) {
   const newRpc = () => rpcCalls.slice(rpcBefore);
   const newWrites = () => writes.slice(writesBefore);
 
-  // Focus
-  await page.goto(base);
+  await todayFlow(page, label, at, newRpc, newWrites);
+  await pipelineFlow(page, label, at, newWrites);
+  await engineTabsFlow(page, label, at);
+
+  // Leads desk (under More): mandate cards with New leads and the network, then Background BD
+  await page.goto(`${base}#/leads`);
   await page.getByRole("heading", { name: "Signed mandates" }).waitFor();
-  check(/^Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".focus-head h1").textContent()) ?? ""), at("Focus greets Kuran"));
-  await page.locator(".today-headline:not(.is-quiet)").waitFor();
-  check((await page.locator(".today-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
-  // ---- Today: Do now (max 3, urgent live items first, the brief keeps a slot), calls, could do, rep, digest ----
-  await page.locator(".do-row").nth(2).waitFor();
-  const doTexts = await page.locator(".do-row .do-text").allTextContents();
-  check(doTexts.length === 3 && doTexts[0] === "Answer 1 reply" && doTexts[1] === "Approve 2 drafts" && doTexts[2] === "Send the Al-Risha teaser to the three warmest neoclouds", at("Do now: three items, live reply and drafts first, then the brief's top item"));
-  check(await page.locator(".do-row").first().locator(".btn.primary").count() === 1 && await page.locator(".do-row .btn.primary").count() === 1, at("Do now has one obvious primary action"));
-  check(await page.locator(".do-row").nth(1).getByRole("link", { name: "Review" }).getAttribute("href") === "#/review", at("the drafts item jumps to Review"));
-  check((await page.locator(".calls li").count()) === 2 && (await page.locator(".calls li").first().textContent())?.startsWith("10:30Harlow Compute (CEO)"), at("Calls today lists time, who and goal"));
-  check(await page.locator(".digest li").count() === 4, at("the digest shows at most four lines"));
-  check(!(await page.locator(".could").getAttribute("open") !== null), at("Could do starts folded"));
-  await page.locator(".could summary").click();
-  const could = await page.locator(".could li").allTextContents();
-  check(could.length === 5 && could[0].startsWith("Chase the Basalt fee letter") && could[1].startsWith("Confirm the 14:00 agenda") && could[2].startsWith("Approve or dismiss 18 new leads") && could.some((c) => c.startsWith("Comment on two GTC Berlin posts")), at("Could do holds the overflow first, then the brief's ideas, five at most"));
-  await page.locator(".could summary").click();
-  await page.locator(".rep").getByRole("button", { name: "Show answer" }).click();
-  check((await page.locator(".rep-a").textContent())?.startsWith("The seller’s revenue"), at("the 2-minute rep reveals its answer on tap"));
-  await page.getByRole("button", { name: "Done: Send the Al-Risha teaser to the three warmest neoclouds" }).click();
-  check(await page.locator(".do-row.is-done").count() === 1, at("a brief item can be ticked off"));
-  await page.getByRole("button", { name: "Not done: Send the Al-Risha teaser to the three warmest neoclouds" }).click();
-  check(await page.locator(".do-row.is-done").count() === 0, at("and un-ticked"));
-  await page.locator(".do-row").first().getByRole("button", { name: "Answer" }).click();
-  check(await page.locator("#waiting").getAttribute("open") !== null, at("Answer opens Waiting on others"));
-  await page.locator(".waiting summary").click();
-  // Mandate cards fold: the first is open, the rest show just their header
   await page.locator(".mcard").nth(1).waitFor();
   check(await page.locator(".mcard").nth(1).locator(".mbody").count() === 0 && await page.locator(".mcard").first().locator(".mbody").count() === 1, at("the first mandate card is open and the second is folded"));
   await page.locator(".mcard").nth(1).getByRole("button", { name: /^Open / }).click();
@@ -205,7 +320,7 @@ async function focusFlow(browser, label, viewport) {
   check(await page.locator(".mcard").nth(1).locator(".mbody").count() === 0, at("and folds again"));
   await page.locator(".mcard").first().waitFor();
   const card1 = page.locator(".mcard").first();
-  check(await page.locator(".mcard").count() === 2, at("Focus shows the top three priorities as two mandate cards (Al-Risha shares one)"));
+  check(await page.locator(".mcard").count() === 2, at("the Leads desk shows the top three priorities as two mandate cards (Al-Risha shares one)"));
   check(await page.locator(".mcard-rank").first().textContent() === "1", at("mandates are in rank order"));
   const wsTabs = card1.locator(".mtabs [role=tab]");
   check(await wsTabs.count() === 2 && (await wsTabs.allTextContents()).join("|").includes("Offtakers") && (await wsTabs.allTextContents()).join("|").includes("Investors"), at("Al-Risha reads as one mandate with two workstreams"));
@@ -318,7 +433,7 @@ async function focusFlow(browser, label, viewport) {
     ["Leila Nasser", "Karim Aziz", "Maya Okafor"].every((n) => bq.includes(n)) &&
     bq.includes("1. Leila Nasser, Head of Capacity, Desert Peak Cloud (contact_id cccccccc-7777-4000-8000-000000000065)") &&
     bq.includes("(contact_id cccccccc-7777-4000-8000-000000000066)") && bq.includes("(contact_id cccccccc-7777-4000-8000-000000000067)"), at("one instruction lists all three people with contact ids"));
-  check(await page.evaluate(() => navigator.clipboard.readText()) === bq, at("the batch instruction is also copied"));
+  check(!/clipboard|paste/i.test(bq), at("the batch instruction never asks for a paste"));
   check(await card1.locator(".net-sent").count() === 3 && await card1.locator(".net-batch").count() === 0, at("the three are marked Sent to Claude and the bar goes"));
 
   // Selection is per priority and survives switching tabs
@@ -370,7 +485,7 @@ async function focusFlow(browser, label, viewport) {
   await card1.getByRole("tab", { name: /Offtakers/ }).click();
   await page.getByRole("button", { name: "Show 2 more" }).click();
   check(await page.locator(".mcard").count() === 4, at("Show 2 more reveals the rest"));
-  check(await page.evaluate(() => document.documentElement.dataset.calm) === "on", at("calm mode is on by default on Focus"));
+  check(await page.evaluate(() => document.documentElement.dataset.calm) === "on", at("calm mode is on by default on the Leads desk"));
   check(await page.locator(".strip-cell", { hasText: "Sources live" }).count() === 0, at("calm mode hides the strip counters"));
 
   const ask = card1.getByRole("link", { name: "Ask Claude", exact: true });
@@ -380,42 +495,12 @@ async function focusFlow(browser, label, viewport) {
   const popup = page.waitForEvent("popup");
   await ask.click();
   await (await popup).close().catch(() => undefined);
-  await page.getByText("Copied — paste into your Nodus chat if it didn't fill").waitFor();
-  check(await page.evaluate(() => navigator.clipboard.readText()) === q, at("Ask Claude copies the same instruction"));
+  await page.getByText("Opened a Nodus chat with the instruction filled in. Press send there.").waitFor();
+  check(true, at("Ask Claude says the chat is filled in, with nothing to paste"));
   await card1.locator(".ask-menu summary").click();
   check(await card1.getByRole("link", { name: "What's blocking this?" }).isVisible(), at("preset asks are offered"));
   await card1.locator(".ask-menu summary").click();
   check(await card1.getByRole("link", { name: "Review 1 draft" }).getAttribute("href") === `#/review?priority=${P1}`, at("Review drafts jumps to that priority's drafts"));
-
-  // Do now: one at a time, priority 1 first
-  check(/1\s*of\s*2/.test(await page.locator(".deck-count").textContent() ?? ""), at("Do now shows 1 of 2"));
-  check(await page.locator(".deck-card .ptag").textContent() === "Priority 1: Al-Risha phase 1: find the offtaker", at("priority-tagged draft comes first"));
-  if (label === "desktop") await page.keyboard.press("a");
-  else await page.getByRole("button", { name: "Approve & send" }).click();
-  await page.locator(".deck-last").waitFor();
-  check(/Sends at \d\d:53 (today|tomorrow|on [A-Z][a-z]+day)\./.test(await page.locator(".deck-last").textContent() ?? ""), at("approving says when it sends"));
-  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at(`${label === "desktop" ? "A key" : "Approve & send"} goes through outreach_decide`));
-  check(/2\s*of\s*2/.test(await page.locator(".deck-count").textContent() ?? ""), at("the deck moves on to 2 of 2"));
-  await page.evaluate(() => {
-    const open = window.open.bind(window);
-    window.__opened = [];
-    window.open = (u, ...rest) => (window.__opened.push(String(u)), open(u, ...rest));
-  });
-  const li = page.waitForEvent("popup");
-  await page.getByRole("button", { name: /Copy & open LinkedIn/ }).click();
-  await (await li).close().catch(() => undefined);
-  check((await page.evaluate(() => window.__opened))[0] === "https://www.linkedin.com/in/alex-example", at("Copy & open LinkedIn opens the profile"));
-  check(await page.evaluate(() => navigator.clipboard.readText()) === "Hi Alex, good to connect.", at("Copy & open LinkedIn copies the message"));
-  await page.getByRole("button", { name: "Mark sent" }).click();
-  await page.getByText("All done. Nothing else is waiting for you.").waitFor();
-  check(newWrites().some((w) => w.table === "outreach" && w.body.status === "sent"), at("Mark sent uses the existing sent path"));
-  check(!newRpc().some((c) => c.name === "outreach_decide" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000002"), at("an approved LinkedIn item is not approved twice"));
-
-  await page.locator(".waiting summary").click();
-  const reply = page.getByRole("link", { name: "Draft reply with Claude" });
-  const rq = new URL((await reply.getAttribute("href")) ?? "https://x").searchParams.get("q") ?? "";
-  check(new URL((await reply.getAttribute("href")) ?? "https://x").searchParams.get("project") === "01a0f3c4-b60e-7236-8dea-4bd5402220f3" && rq.includes("draft a reply to Alex Example at Example Power Ltd") && rq.includes('"Capacity in Jordan"') && rq.includes("priority 1"), at("Waiting on others drafts a reply with Claude"));
-  check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Focus has no sideways scrolling"));
 
   // ---- Background BD: pipeline strip, Process 25 now, the same lead queue for leads with no priority ----
   const bd = page.locator("#bd");
@@ -445,8 +530,37 @@ async function focusFlow(browser, label, viewport) {
   check(await bd.locator(".lead-ok .lead-sent").count() === 2, at("background approved leads are marked Sent to Claude"));
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("the front page has no sideways scrolling with Background BD"));
 
-  // Review: skip and edit
+  // Review (under More, not in the nav): every draft, email and LinkedIn, one at a time, priority 1 first
   await page.goto(`${base}#/review`);
+  await page.locator(".deck-card").waitFor();
+  check(/1\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("Review shows 1 of 3 (email and LinkedIn)"));
+  check(await page.locator(".deck-card .ptag").textContent() === "Priority 1: Al-Risha phase 1: find the offtaker", at("priority-tagged draft comes first"));
+  if (label === "desktop") await page.keyboard.press("a");
+  else await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await page.locator(".deck-last").waitFor();
+  check((await page.locator(".deck-last").textContent()) === "Approved Alex Example. It waits until sending is turned on.", at("with sending paused, approving says it waits (no send time is claimed)"));
+  check(newRpc().some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000001"), at(`${label === "desktop" ? "A key" : "Approve"} goes through outreach_decide`));
+  check(/2\s*of\s*3/.test(await page.locator(".deck-count").textContent() ?? ""), at("the deck moves on to 2 of 3"));
+  await page.evaluate(() => {
+    const open = window.open.bind(window);
+    window.__opened = [];
+    window.open = (u, ...rest) => (window.__opened.push(String(u)), open(u, ...rest));
+  });
+  const li = page.waitForEvent("popup");
+  await page.getByRole("button", { name: /Copy & open LinkedIn/ }).click();
+  await (await li).close().catch(() => undefined);
+  check((await page.evaluate(() => window.__opened))[0] === "https://www.linkedin.com/in/alex-example", at("Copy & open LinkedIn opens the profile"));
+  check(await page.evaluate(() => navigator.clipboard.readText()) === "Hi Alex, good to connect.", at("Copy & open LinkedIn copies the message"));
+  await page.getByRole("button", { name: "Mark sent" }).click();
+  await page.locator(".deck-count", { hasText: /3\s*of\s*3/ }).waitFor();
+  await page.getByRole("button", { name: "Skip" }).click();
+  await page.getByText("All done. Nothing else is waiting for you.").waitFor();
+  check(newWrites().some((w) => w.table === "outreach" && w.body.status === "sent"), at("Mark sent uses the existing sent path"));
+  check(!newRpc().some((c) => c.name === "outreach_decide" && c.body.p_id === "eeeeeeee-1111-4000-8000-000000000002"), at("an approved LinkedIn item is not approved twice"));
+
+  // Review: skip and edit (a fresh load: the deck above is already at "All done")
+  await page.goto(`${base}#/review`);
+  await page.reload();
   await page.getByRole("heading", { name: "Review", exact: true }).waitFor();
   await page.locator(".deck-card").waitFor();
   if (label === "desktop") {
@@ -494,18 +608,22 @@ async function focusFlow(browser, label, viewport) {
   check(newWrites().some((w) => w.table === "priorities" && w.method === "POST" && w.body.title === "GPU lot for Quarry" && w.body.rank === 6 && w.body.status === "active"), at("Add a priority inserts at the bottom"));
   check(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), at("Priorities has no sideways scrolling"));
 
-  // Shell: five primary places, the rest under More
+  // Shell: three primary places, the rest under More
   const nav = label === "phone" ? page.locator(".mnav") : page.locator(".rail-primary");
   const names = (await nav.getByRole("link").allTextContents()).map((t) => t.replace(/\d+$/, "").trim());
-  check(JSON.stringify(names) === JSON.stringify(["Focus", "Review", "Priorities", "Map", "Engine"]), at(`primary nav is Focus, Review, Priorities, Map, Engine (got ${names.join(", ")})`));
+  check(JSON.stringify(names) === JSON.stringify(["Today", "Pipeline", "Engine"]), at(`primary nav is Today, Pipeline, Engine (got ${names.join(", ")})`));
+  check(await nav.getByRole("link", { name: /Review/ }).count() === 0, at("Review is not in the nav"));
   if (label === "phone") await page.getByRole("button", { name: "More" }).click();
   else await page.locator(".rail-more").click();
-  await page.getByRole("link", { name: "Today cockpit" }).first().click();
-  await page.getByRole("heading", { name: "Today", exact: true }).waitFor();
-  check(true, at("the Today cockpit is under More"));
+  const more = label === "phone" ? page.locator(".msheet") : page.locator("#rail-more");
+  const moreNames = await more.getByRole("link").allTextContents();
+  check(["Leads desk", "Mandates", "Priorities", "Contacts", "Deals", "Import"].every((n) => moreNames.includes(n)) && !moreNames.some((n) => /^Review/.test(n)), at("More holds the work pages and data, without Review"));
+  await more.getByRole("link", { name: "Daily report" }).click();
+  await page.getByRole("heading", { name: "Daily report", exact: true }).waitFor();
+  check(true, at("the old cockpit is the Daily report under More"));
   await page.locator(".strip-calm").click();
   check(await page.evaluate(() => document.documentElement.dataset.calm) === "on" && await page.evaluate(() => localStorage.getItem("nodus-calm")) === "on", at("calm toggle is remembered in this browser"));
-  check(errors.length === 0, at(`no script errors on Focus, Review and Priorities${errors.length ? `: ${errors.join("; ")}` : ""}`));
+  check(errors.length === 0, at(`no script errors on Today, Pipeline, Engine, Leads desk, Review and Priorities${errors.length ? `: ${errors.join("; ")}` : ""}`));
   await ctx.close();
 }
 
@@ -532,10 +650,10 @@ try {
   await page.getByLabel("Password").fill("right-password");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await page.getByRole("heading", { name: "Signed mandates" }).waitFor();
-  check(true, "signing in opens Focus");
+  await page.getByRole("heading", { name: "Focus session" }).waitFor();
+  check(true, "signing in opens Today");
   await page.goto(`${base}#/today`);
-  await page.getByRole("heading", { name: "Today" }).waitFor();
+  await page.getByRole("heading", { name: "Daily report" }).waitFor();
   await page.getByText("Ealing 50 MW site could serve the London hyperscaler need").waitFor();
   check(await page.getByText("£0.00").isVisible(), "Today shows Claude API spend £0.00");
   check(await page.getByText("Waiting for AI reading").isVisible(), "Today shows AI queue");
@@ -628,22 +746,13 @@ try {
 
   // ---------- CRM (merged from the old HQ) ----------
   await page.goto(`${base}#/today`);
-  await page.getByRole("heading", { name: "Approve (1)" }).waitFor();
-  check(await page.locator(".nav-count").first().textContent() === "1", "Today shows a drafts badge in the nav");
-  check(await page.getByRole("heading", { name: "LinkedIn to send (1)" }).isVisible(), "Today lists LinkedIn to send");
-  check(await page.getByText("Chase the NCNDA").isVisible(), "Today lists actions to do first");
-  check(await page.getByRole("link", { name: "Example 20 MW gensets" }).isVisible(), "Today lists deals due");
+  await page.getByRole("heading", { name: "Approvals" }).waitFor();
+  check(await page.locator(".nav-count").first().textContent() === "2", "the nav shows a drafts badge on Today");
+  check(await page.getByRole("link", { name: "Approve on Today" }).getAttribute("href") === "#/", "the Daily report points approvals to Today instead of a second queue");
+  check(await page.getByRole("button", { name: "Approve all shown" }).count() === 0, "there is no bulk approve on the Daily report");
+  check(await page.getByText("Chase the NCNDA").isVisible(), "the Daily report lists actions to do first");
+  check(await page.getByRole("link", { name: "Example 20 MW gensets" }).isVisible(), "the Daily report lists deals due");
   await page.screenshot({ path: path.join(shots, "console-today-crm.png"), fullPage: false });
-  await page.locator(".outreach textarea").first().fill("Hello Alex,\nEdited.");
-  await page.getByRole("button", { name: "Save edit" }).click();
-  await page.getByText("Edit saved.").waitFor();
-  check(rpcCalls.some((c) => c.name === "outreach_decide" && c.body.p_decision === "edit" && c.body.p_body === "Hello Alex,\nEdited."), "Save edit calls outreach_decide with the new text");
-  await page.getByRole("button", { name: "Approve", exact: true }).first().click();
-  await page.getByText("Approved. The send job").waitFor();
-  check(rpcCalls.some((c) => c.name === "outreach_decide" && c.body.p_decision === "approve"), "Approve calls outreach_decide");
-  await page.getByRole("button", { name: "Mark sent" }).click();
-  await page.waitForTimeout(300);
-  check(writes.some((w) => w.table === "outreach" && w.body.status === "sent" && w.body.sent_at), "Mark sent sets status sent and sent_at");
   await page.getByRole("checkbox", { name: /Chase the NCNDA/ }).click();
   await page.waitForTimeout(300);
   check(writes.some((w) => w.table === "crm_actions" && w.body.status === "done"), "ticking an action marks it done");
@@ -751,10 +860,12 @@ try {
     const p3 = await ctx3.newPage();
     await p3.goto(base);
     await p3.locator(".do-row").nth(2).waitFor();
-    const note = (await p3.locator(".today-headline").textContent()) ?? "";
-    check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), "with no brief, Today says when it arrives");
-    check((await p3.locator(".do-row .do-text").allTextContents()).join("|") === "Answer 1 reply|Approve 2 drafts|Approve or dismiss 18 new leads", "with no brief, the live Do now items still show");
-    check(await p3.locator(".today-aside").count() === 0, "with no brief, there is no calls or digest panel");
+    await p3.locator(".home-headline:not([aria-busy])").waitFor();
+    const note = (await p3.locator(".home-headline").textContent()) ?? "";
+    check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), `with no brief, Today says when it arrives (got "${note}")`);
+    check((await p3.locator(".do-row .do-text").allTextContents()).join("|") === "Answer 1 reply|Approve 3 drafts|Approve or dismiss 18 new leads", "with no brief, live items stand in for the focus session");
+    check((await p3.locator(".sendline").textContent())?.startsWith("Sending is paused."), "with no brief, sending is never claimed");
+    check(await p3.locator(".home-calls").count() === 0, "with no brief, there is no calls or digest panel");
     await p3.screenshot({ path: path.join(frontShots, "front-no-brief-phone.png") });
     await ctx3.close();
   }
@@ -797,32 +908,61 @@ try {
     const errs = [];
     p.on("pageerror", (e) => errs.push(String(e)));
     if (process.env.SMOKE_DEBUG) p.on("console", (m) => m.type() !== "log" && console.log(`  [${name} console ${m.type()}] ${m.text().slice(0, 400)}`));
+    // ---- Today: sending paused, then on ----
+    const v3 = process.env.V3_SHOTS || shots;
+    fs.mkdirSync(v3, { recursive: true });
     await p.goto(base);
+    await p.getByRole("heading", { name: "Focus session" }).waitFor();
+    await p.locator("#approve .deck-card").waitFor();
+    await p.locator(".mrow").first().waitFor();
+    await p.locator("#linkedin .li-row").first().waitFor();
+    await p.locator(".owed-row").first().waitFor();
+    await p.waitForTimeout(600);
+    const emails = fd.outreach.filter((o) => ["draft", "manual"].includes(o.status) && o.channel !== "linkedin").length;
+    check(new RegExp(`1\\s*of\\s*${emails}$`).test((await p.locator("#approve .deck-count").textContent()) ?? ""), `Today's deck counts the ${emails} emails and leaves LinkedIn and parked out (${name})`);
+    check(await p.locator("#linkedin .li-list").first().locator(".li-row").count() === 3 && (await p.locator(".li-wait-head p").textContent()) === "2 waiting for connection (send a connection note)", `LinkedIn: three connected DMs, two waiting for a connection (${name})`);
+    check(await p.locator('a[href^="https://claude.ai/new"]').count() === 1, `Today has one Claude hand-off with full data (${name})`);
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Today has no sideways scrolling with full data (${name})`);
+    await p.evaluate(() => window.scrollTo(0, 0));
+    await p.screenshot({ path: path.join(v3, `today-send-off-${name}.png`) });
+    await p.screenshot({ path: path.join(v3, `today-send-off-${name}-full.png`), fullPage: true });
+    big.tables.daily_briefs = [dailyBrief(ukDay, true)];
+    await p.reload();
+    await p.locator(".sendline.is-on").waitFor();
+    check((await p.locator(".sendline").textContent()) === "Approved emails go out at 09:53, 12:53 and 15:53.", `send_enabled true: the sending line gives the slots (${name})`);
+    await p.locator("#approve .deck-card").waitFor();
+    await p.locator(".mrow").first().waitFor();
+    await p.waitForTimeout(500);
+    check((await p.locator("#approve .deck-hint").textContent())?.includes("Approved emails go out at 09:53"), `the deck agrees when sending is on (${name})`);
+    await p.screenshot({ path: path.join(v3, `today-send-on-${name}.png`) });
+    await p.screenshot({ path: path.join(v3, `today-send-on-${name}-full.png`), fullPage: true });
+    if (name === "phone") {
+      await p.locator(".mrow").nth(0).locator(".mrow-line").click();
+      await p.locator(".mrow-card .mcard").waitFor();
+      await p.waitForTimeout(300);
+      await p.locator("#signed-mandates").screenshot({ path: path.join(v3, "today-mandate-open-phone.png") });
+    }
+    big.tables.daily_briefs = [dailyBrief(ukDay)];
+    // ---- Pipeline ----
+    await p.goto(`${base}#/pipeline`);
+    await p.locator(".pipe-row").first().waitFor();
+    await p.waitForTimeout(400);
+    const firstLate = (await p.locator(".pipe-row").first().locator(".pipe-late").textContent()) ?? "";
+    check(/days? overdue$/.test(firstLate), `Pipeline opens on the most overdue (${name}: ${firstLate})`);
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Pipeline has no sideways scrolling with full data (${name})`);
+    await p.screenshot({ path: path.join(v3, `pipeline-${name}.png`) });
+    await p.screenshot({ path: path.join(v3, `pipeline-${name}-full.png`), fullPage: true });
+    // ---- Leads desk (under More) ----
+    await p.goto(`${base}#/leads`);
     await p.getByRole("heading", { name: "Signed mandates" }).waitFor();
-    await p.locator(".deck-card").waitFor();
     await p.locator(".lead-row").first().waitFor();
     await p.waitForTimeout(500);
     fs.mkdirSync(leadShots, { recursive: true });
     await p.screenshot({ path: path.join(leadShots, `leads-focus-${name}.png`) });
     await p.locator(".mcard").first().screenshot({ path: path.join(leadShots, `leads-card-${name}.png`) });
-    await p.screenshot({ path: path.join(focusShots, `focus-${name}.png`) });
-    await p.screenshot({ path: path.join(focusShots, `focus-${name}-full.png`), fullPage: true });
-    check(/1\s*of\s*17/.test(await p.locator(".deck-count").textContent() ?? ""), `Do now counts 17 drafts and leaves the parked ones out (${name})`);
     check(await p.locator(".mcard").count() === 2, `the top three priorities fill two mandate cards (${name})`);
     const sup = p.locator(".mcard").nth(1);
-    fs.mkdirSync(frontShots, { recursive: true });
     await p.locator("#bd .lead-row").first().waitFor();
-    await p.locator(".do-row").first().waitFor();
-    await p.evaluate(() => window.scrollTo(0, 0));
-    await p.waitForTimeout(300);
-    await p.screenshot({ path: path.join(frontShots, `front-${name}.png`) });
-    for (const [i, id] of [[2, "signed-mandates"], [3, "bd"]]) {
-      await p.evaluate((x) => document.getElementById(x)?.scrollIntoView({ block: "start" }), id);
-      await p.waitForTimeout(150);
-      await p.screenshot({ path: path.join(frontShots, `front-${name}-${i}.png`) });
-    }
-    await p.evaluate(() => window.scrollTo(0, 0));
-    await p.screenshot({ path: path.join(frontShots, `front-${name}-full.png`), fullPage: true });
     await sup.getByRole("button", { name: /^Open / }).click();
     check((await sup.locator(".net h4").textContent()) === "Suppliers and integrators in your network", `the supplier mandate labels its network list (${name})`);
     check((await sup.locator(".seal").textContent()) === "Not signed yet" && (await sup.locator(".mchips").textContent())?.includes("Fee letter outstanding"), `an unsigned deal says what is outstanding (${name})`);
@@ -842,7 +982,7 @@ try {
     const parkedSum = p.locator(".parked summary");
     await parkedSum.waitFor();
     check(/Parked \(3\)/.test(await parkedSum.textContent() ?? ""), `Outreach offers a collapsed Parked (3) list (${name})`);
-    check(await p.locator(".tabs a", { hasText: "To approve" }).textContent().then((t) => /\(16\)/.test(t ?? "")), `the To approve count leaves parked out (${name})`);
+    check(await p.locator(".tabs a", { hasText: "To approve" }).textContent().then((t) => /\(17\)/.test(t ?? "")), `the To approve count leaves parked out (${name})`);
     await parkedSum.click();
     await p.locator(".parked-list li").first().waitFor();
     await p.waitForTimeout(300);
@@ -864,7 +1004,7 @@ try {
     await p.getByText(/Marked for enrichment/).waitFor();
     check(rpcCalls.slice(rb).some((c) => c.name === "enrich_request" && c.body.p_opp === "11111111-1111-4111-8111-111111111111"), `Enrich & draft marks it through enrich_request (${name})`);
     if (name === "desktop") await p.screenshot({ path: path.join(focusShots, "opportunity-enrich-desktop.png") });
-    check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `Focus has no sideways scrolling with full data (${name})`);
+    check(await p.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `the opportunity page has no sideways scrolling with full data (${name})`);
     await p.goto(`${base}#/review`);
     await p.locator(".deck-card").waitFor();
     await p.waitForTimeout(400);
@@ -874,7 +1014,7 @@ try {
     await p.waitForTimeout(300);
     await p.screenshot({ path: path.join(focusShots, `priorities-${name}.png`), fullPage: true });
     await p.goto(`${base}#/today`);
-    await p.getByRole("heading", { name: "Today", exact: true }).waitFor();
+    await p.getByRole("heading", { name: "Daily report", exact: true }).waitFor();
     await p.getByRole("heading", { name: "Pipeline" }).waitFor();
     await p.waitForTimeout(900);
     await p.screenshot({ path: path.join(shots, `today-${name}.png`) });
@@ -885,6 +1025,7 @@ try {
     await p.waitForTimeout(3500);
     check(await p.locator(".cluster-marker").count() > 0 || await p.locator(".map-note").count() > 0, `Map clusters render (${name})`);
     await p.screenshot({ path: path.join(shots, `map-${name}.png`), fullPage: name === "phone" });
+    await p.screenshot({ path: path.join(v3, `engine-map-${name}.png`) });
     const pt = await p.evaluate(() => {
       const el = document.querySelector(".mapx-canvas");
       return el ? { w: el.clientWidth, h: el.clientHeight } : null;
@@ -910,6 +1051,7 @@ try {
     await p.locator(".engine-svg .link").first().waitFor({ state: "attached" });
     await p.waitForTimeout(1400);
     await p.screenshot({ path: path.join(shots, `engine-${name}.png`) });
+    await p.screenshot({ path: path.join(v3, `engine-matches-${name}.png`) });
     const fbMatch = syn.matches.find((m) => m.explanation.feedback);
     await p.goto(`${base}#/engine?m=${fbMatch?.id ?? syn.matches[0].id}`);
     await p.getByText("Score breakdown").waitFor();
@@ -920,6 +1062,10 @@ try {
     // The opportunity sequencer: stage chips, one-click actions, Best next and the selection bars
     const foundId = syn.opportunities.find((o) => o.region && o.country === "US" && seqd.opportunity_stage.find((r) => r.opportunity_id === o.id)?.stage === "found")?.id;
     await sequencerFlow(p, { base, name, shots, check, writes, foundId });
+    await p.goto(`${base}#/engine?best=1`);
+    await p.locator(".engine-tabs a.active", { hasText: "Best next" }).waitFor();
+    await p.waitForTimeout(900);
+    await p.screenshot({ path: path.join(v3, `engine-best-${name}.png`) });
 
     await p.goto(`${base}#/matches`);
     await p.getByRole("heading", { name: "Matches", exact: true }).waitFor();

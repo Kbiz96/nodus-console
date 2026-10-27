@@ -2,7 +2,6 @@
 // The same components are used on the Map, the Engine, the Opportunities list and each opportunity's page.
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { copyNow } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { friendlyError } from "../lib/rules.ts";
 import {
@@ -41,10 +40,9 @@ function openChats(action: SeqAction, opps: SeqOpp[]) {
   const chats = sequencerChats(action, opps);
   if (chats.length === 0) return;
   const first = chats[0];
-  if (!first.full) copyNow(first.text);
   markWithClaude(first.ids, action);
   const rest = chats.slice(1);
-  const paste = first.full ? "" : " The instruction is on your clipboard: paste it into the new chat.";
+  const paste = first.full ? "" : " The list was shortened to fit; Claude looks up the rest.";
   if (rest.length === 0) {
     toast(`With Claude: ${first.ids.length === 1 ? "1 opportunity" : `${first.ids.length} opportunities`}. Drafts come back to Review; nothing is sent until you say send.${paste}`);
     return;
@@ -55,7 +53,6 @@ function openChats(action: SeqAction, opps: SeqOpp[]) {
       label: `Open batch ${i + 2}`,
       close: i === rest.length - 1,
       run: () => {
-        if (!c.full) copyNow(c.text);
         window.open(c.url, "_blank", "noopener,noreferrer");
         markWithClaude(c.ids, action);
       },

@@ -1,9 +1,13 @@
 // The front page's "Today" block: the morning brief (daily_briefs, written 06:40 UK on weekdays), the Do now
 // list merged with live items, and the Background BD pipeline strip. Pure functions only, so they can be unit-tested.
 
+import { isGmailUrl, sendStatusText } from "./today.ts";
+
 export interface BriefCall { time: string; who: string; goal: string }
 export interface BriefItem { text: string; link: string | null }
 export interface BriefMandate { rank: number | null; title: string; status: string; next: string; overdue: boolean }
+/** A reply someone is owed, found by the 06:40 and 17:45 runs; the answer is already a Gmail draft when the link is set. */
+export interface BriefReply { who: string; company: string; summary: string; gmail_draft_url: string | null }
 export interface Brief {
   day: string | null;
   headline: string;
@@ -13,6 +17,9 @@ export interface Brief {
   mandates: BriefMandate[];
   digest: string[];
   rep: { q: string; a: string } | null;
+  replies: BriefReply[];
+  /** Whether the send batch is switched on: true or false as the brief says, null when the brief does not say. */
+  send_enabled: boolean | null;
 }
 
 function str(v: unknown): string {
@@ -53,12 +60,20 @@ export function parseBrief(body: unknown, day: string | null = null): Brief {
   const digest = arr(o.digest).map(str).filter(Boolean).slice(0, 4);
   const r = obj(o.rep);
   const rep = str(r.q) ? { q: str(r.q), a: str(r.a) } : null;
-  return { day, headline: str(o.headline), calls, do_now, could_do, mandates, digest, rep };
+  const replies = arr(o.replies)
+    .map((x) => {
+      const y = obj(x);
+      const url = str(y.gmail_draft_url);
+      return { who: str(y.who), company: str(y.company), summary: str(y.summary), gmail_draft_url: /^https:\/\/mail\.google\.com\//.test(url) ? url : null };
+    })
+    .filter((x) => x.who || x.company);
+  const send_enabled = o.send_enabled === true ? true : o.send_enabled === false ? false : null;
+  return { day, headline: str(o.headline), calls, do_now, could_do, mandates, digest, rep, replies, send_enabled };
 }
 
 /** True when there is nothing worth showing (an empty row is treated as no brief). */
 export function briefIsEmpty(b: Brief | null): boolean {
-  return !b || (!b.headline && b.calls.length === 0 && b.do_now.length === 0 && b.could_do.length === 0 && b.digest.length === 0 && !b.rep);
+  return !b || (!b.headline && b.calls.length === 0 && b.do_now.length === 0 && b.could_do.length === 0 && b.digest.length === 0 && !b.rep && b.replies.length === 0 && b.send_enabled === null);
 }
 
 // ---------- when the brief is missing ----------
@@ -111,13 +126,13 @@ function plural(n: number, one: string, many: string): string {
  * Live items from the database. Replies and drafts are urgent (someone is waiting, or a send slot is coming);
  * new leads are routine and only take a slot the brief does not need.
  */
-export function liveItems(c: LiveCounts): DoItem[] {
+export function liveItems(c: LiveCounts, sendEnabled: boolean | null = null): DoItem[] {
   const out: DoItem[] = [];
   if (c.replies > 0) {
-    out.push({ key: "live-replies", text: `Answer ${plural(c.replies, "reply", "replies")}`, detail: "Someone wrote back. Claude drafts the answer.", cta: "Answer", action: { kind: "scroll", target: "waiting" }, live: true, urgent: true });
+    out.push({ key: "live-replies", text: `Answer ${plural(c.replies, "reply", "replies")}`, detail: "Someone wrote back.", cta: "See replies", action: { kind: "scroll", target: "replies" }, live: true, urgent: true });
   }
   if (c.drafts > 0) {
-    out.push({ key: "live-drafts", text: `Approve ${plural(c.drafts, "draft", "drafts")}`, detail: "Approved emails go out at the next send slot.", cta: "Review", action: { kind: "route", to: "/review" }, live: true, urgent: true });
+    out.push({ key: "live-drafts", text: `Approve ${plural(c.drafts, "draft", "drafts")}`, detail: sendStatusText(sendEnabled), cta: "Approve", action: { kind: "scroll", target: "approve" }, live: true, urgent: true });
   }
   const leads = c.mandateLeads + c.backgroundLeads;
   if (leads > 0) {
@@ -130,7 +145,7 @@ export function liveItems(c: LiveCounts): DoItem[] {
       text: `Approve or dismiss ${plural(leads, "new lead", "new leads")}`,
       detail: parts.join(", ") + ".",
       cta: "Go to leads",
-      action: { kind: "scroll", target: c.mandateLeads > 0 ? "signed-mandates" : "bd" },
+      action: { kind: "route", to: "/leads" },
       live: true,
       urgent: false,
     });
@@ -143,6 +158,7 @@ export function briefAction(item: BriefItem): { action: DoAction; cta: string } 
   const link = (item.link ?? "").trim();
   if (/^#?\/(?!\/)/.test(link)) return { action: { kind: "route", to: link.replace(/^#/, "") }, cta: "Open" };
   if (/^https:\/\/claude\.ai\//.test(link)) return { action: { kind: "href", href: link }, cta: "Open in Claude" };
+  if (isGmailUrl(link)) return { action: { kind: "href", href: link }, cta: "Open draft in Gmail" };
   if (/^https?:\/\//.test(link)) return { action: { kind: "href", href: link }, cta: "Open" };
   return { action: { kind: "claude", prompt: `Nodus command: ${item.text.replace(/[.\s]+$/, "")}.` }, cta: "Do it with Claude" };
 }
@@ -152,6 +168,25 @@ export function briefItems(items: BriefItem[]): DoItem[] {
 }
 
 export const DO_NOW_MAX = 3;
+
+/**
+ * The focus session on Today: the brief's own Do now (three at most; the rest go to Could do). With no brief items,
+ * the live items stand in so the session is never empty while something is waiting.
+ */
+export function focusSession(brief: DoItem[], live: DoItem[], max = DO_NOW_MAX): { now: DoItem[]; overflow: DoItem[] } {
+  if (brief.length > 0) return { now: brief.slice(0, max), overflow: brief.slice(max) };
+  return { now: live.slice(0, max), overflow: live.slice(max) };
+}
+
+/** One Claude chat for every focus item that has no link of its own (instead of a chat per item). */
+export function sessionPrompt(items: Pick<DoItem, "text">[]): string {
+  const list = items.map((d, i) => `${i + 1}. ${d.text.replace(/\s+/g, " ").trim()}`).join("\n");
+  return (
+    `Nodus command: focus session. Do these ${items.length === 1 ? "one" : items.length} for me in order, ` +
+    "as far as you can without sending anything: drafts go into Gmail as drafts (in the existing thread when there is one) " +
+    `or into the console for my approval. Tell me what is left for me after each.\n${list}`
+  );
+}
 
 /**
  * At most three Do now items. Urgent live items go first, but the brief's top item always keeps a slot when there

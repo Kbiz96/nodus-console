@@ -9,7 +9,9 @@ import { Logo } from "./components/Brand.tsx";
 import { Loading, NOT_APPROVED, NotFound } from "./components/ui.tsx";
 import Login from "./pages/Login.tsx";
 import Today from "./pages/Today.tsx";
-import Focus from "./pages/Focus.tsx";
+import Home from "./pages/Home.tsx";
+import Pipeline from "./pages/Pipeline.tsx";
+import Leads from "./pages/Leads.tsx";
 import Review from "./pages/Review.tsx";
 import Priorities from "./pages/Priorities.tsx";
 import Matches from "./pages/Matches.tsx";
@@ -40,7 +42,7 @@ export default function App() {
 
   const location = useLocation();
   const navigate = useNavigate();
-  // After an emailed sign-in link, the router briefly sees the token fragment as a page; send it to Focus.
+  // After an emailed sign-in link, the router briefly sees the token fragment as a page; send it to Today.
   useEffect(() => {
     if (session && /access_token|refresh_token|type=magiclink/.test(location.pathname)) navigate("/", { replace: true });
   }, [session, location.pathname, navigate]);
@@ -96,7 +98,9 @@ export default function App() {
   return (
     <Layout email={session.user.email ?? null} onSignOut={signOut}>
       <Routes>
-        <Route path="/" element={<Focus />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/pipeline" element={<Pipeline />} />
+        <Route path="/leads" element={<Leads />} />
         <Route path="/review" element={<Review />} />
         <Route path="/priorities" element={<Priorities />} />
         <Route path="/today" element={<Today />} />

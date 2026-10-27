@@ -1,5 +1,5 @@
-import { copyNow, enrichRequest } from "../lib/data.ts";
-import { claudeLink, withCheckFirst } from "../lib/claude.ts";
+import { enrichRequest } from "../lib/data.ts";
+import { claudeLink } from "../lib/claude.ts";
 import { enrichPrompt } from "../lib/mandates.ts";
 import { friendlyError } from "../lib/rules.ts";
 import { Icon } from "./Brand.tsx";
@@ -9,7 +9,7 @@ type Opp = { id: string; title: string | null };
 
 /**
  * "Enrich & draft": one click (a) asks the engine for decision makers through enrich_request, the same path as
- * the Enrich button, and (b) opens Claude with the instruction to enrich and draft first touches (also copied).
+ * the Enrich button, and (b) opens Claude with the instruction to enrich and draft first touches.
  * Nothing is sent: drafts land in the console for approval.
  */
 export default function EnrichDraft({ opps, match, className = "btn primary", onAsked }: {
@@ -24,8 +24,7 @@ export default function EnrichDraft({ opps, match, className = "btn primary", on
   const prompt = enrichPrompt(real);
   const link = claudeLink(prompt);
   const click = () => {
-    const copied = copyNow(withCheckFirst(prompt));
-    const paste = !link.full && copied ? " The instruction is on your clipboard: paste it into the chat." : "";
+    const paste = link.full ? "" : " (Shortened to fit; Claude looks up the rest.)";
     void (match ? enrichRequest({ match }) : enrichRequest({ opp: real[0].id })).then(
       (rs) => {
         const ok = rs.filter((r) => r.ok).length;
@@ -40,8 +39,6 @@ export default function EnrichDraft({ opps, match, className = "btn primary", on
       },
       (e) => toast(`Claude is drafting in the new tab. Enrichment was not queued: ${friendlyError(e)}`, false),
     );
-    if (!copied) toast("Opening Claude. If the box is empty, copy the instruction from the opportunity page.");
-    else if (!link.full) toast("The instruction is too long for the link, so it is on your clipboard. Paste it into the new Nodus chat.");
   };
   return (
     <a className={className} href={link.url} target="_blank" rel="noopener noreferrer" onClick={click} title="Finds decision makers and drafts first touches for your approval. Nothing is sent.">

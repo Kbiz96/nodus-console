@@ -2,12 +2,11 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
-import { actionSetStatus, outreachChanged, outreachDecide } from "../lib/data.ts";
+import { actionSetStatus } from "../lib/data.ts";
 import { compareActions, fmtDay, gateScore, isClosed, isOverdue, ukToday } from "../lib/crm.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { CrmAction, Deal, Outreach } from "../lib/types.ts";
-import { DraftCard, ManualCard } from "./OutreachCards.tsx";
 import { Empty, ErrorBox, ExtLink, Loading } from "./ui.tsx";
 
 export const OUTREACH_COLS =
@@ -31,35 +30,15 @@ async function load() {
   return { drafts, manual, actions, deals, today };
 }
 
-/** The CRM part of Today: approve queue, LinkedIn to send, actions and deals due. */
+/** The CRM part of the Daily report: a pointer to approvals (they live on Today), actions and deals due. */
 export default function TodayCrm() {
   const { data, error, loading, reload } = useLoad(load, "today-crm");
-  const [confirmAll, setConfirmAll] = useState(false);
-  const [bulk, setBulk] = useState<{ busy: boolean; text: string | null; ok: boolean }>({ busy: false, text: null, ok: true });
   const [actMsg, setActMsg] = useState<{ id: string; text: string } | null>(null);
 
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if (loading && !data) return <Loading what="Loading your queue…" />;
   if (!data) return null;
   const { drafts, manual, actions, deals, today } = data;
-
-  const approveAll = async () => {
-    setBulk({ busy: true, text: null, ok: true });
-    let done = 0;
-    const failed: string[] = [];
-    for (const o of drafts.rows) {
-      try {
-        await outreachDecide(o.id, "approve");
-        done++;
-      } catch (e) {
-        failed.push(`${o.to_name ?? "Unnamed"}: ${friendlyError(e)}`);
-      }
-    }
-    setConfirmAll(false);
-    setBulk({ busy: false, ok: failed.length === 0, text: `Approved ${done} of ${drafts.rows.length}.${failed.length ? ` Not approved: ${failed.join("; ")}` : ""}` });
-    outreachChanged();
-    reload();
-  };
 
   const setAction = async (a: CrmAction, status: "done" | "dismissed") => {
     setActMsg(null);
@@ -74,32 +53,13 @@ export default function TodayCrm() {
   return (
     <>
       <section className="stack">
-        <div className="sec-title">
-          <h2>Approve ({fmtNumber(drafts.total)})</h2>
-          {drafts.rows.length > 1 && !confirmAll && (
-            <button className="btn small" type="button" onClick={() => setConfirmAll(true)} disabled={bulk.busy}>Approve all shown</button>
-          )}
-        </div>
-        <p className="muted small">Drafts waiting for you, newest first. Emails you approve are sent by the send job within the daily limit; LinkedIn items move to “LinkedIn to send” for you to send yourself.</p>
-        {confirmAll && (
-          <div className="warn stack-xs" role="alert">
-            <p>Approve all {drafts.rows.length} drafts shown below exactly as they are? Unsaved edits in the boxes are not included.</p>
-            <div className="action-row">
-              <button className="btn primary small" type="button" disabled={bulk.busy} onClick={approveAll}>{bulk.busy ? "Approving…" : `Yes, approve ${drafts.rows.length}`}</button>
-              <button className="btn ghost small" type="button" disabled={bulk.busy} onClick={() => setConfirmAll(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-        {bulk.text && <p className={`${bulk.ok ? "ok" : "error"} small`} role="status">{bulk.text}</p>}
-        {drafts.rows.length === 0 ? <Empty>Nothing waiting for approval.</Empty> : drafts.rows.map((o) => <DraftCard key={`${o.id}-${o.subject ?? ""}-${o.body ?? ""}`} o={o} onChanged={reload} />)}
-        {drafts.total > drafts.rows.length && (
-          <p><Link to="/outreach?status=draft">Showing the newest {drafts.rows.length}. See all {fmtNumber(drafts.total)}</Link></p>
-        )}
-      </section>
-
-      <section className="stack">
-        <div className="sec-title"><h2>LinkedIn to send ({fmtNumber(manual.length)})</h2></div>
-        {manual.length === 0 ? <Empty>Nothing to send on LinkedIn.</Empty> : manual.map((o) => <ManualCard key={o.id} o={o} onChanged={reload} />)}
+        <div className="sec-title"><h2>Approvals</h2></div>
+        <p className="muted small">
+          {drafts.total + manual.length === 0
+            ? "Nothing waiting for approval."
+            : `${fmtNumber(drafts.total)} ${drafts.total === 1 ? "draft" : "drafts"} and ${fmtNumber(manual.length)} LinkedIn ${manual.length === 1 ? "message" : "messages"} wait for you. `}
+          <Link to="/">Approve on Today</Link>
+        </p>
       </section>
 
       <section className="stack">

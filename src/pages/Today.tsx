@@ -83,13 +83,13 @@ async function load() {
 const ukLong = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/London", weekday: "short", day: "numeric", month: "short" });
 
 export default function Today() {
-  useTitle("Today");
+  useTitle("Daily report");
   return (
     <div className="stack-lg">
       <header className="today-head page-head">
         <div className="section-head">
-          <span className="eyebrow">Command centre</span>
-          <h1>Today</h1>
+          <span className="eyebrow">Engine and CRM</span>
+          <h1>Daily report</h1>
           <p className="muted">Your approvals, actions and deals due first; then this week&rsquo;s scoreboard and what the engine found.</p>
         </div>
         <div className="today-date">

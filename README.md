@@ -1,31 +1,40 @@
 # Nodus console
 
-The private web console for the Nodus Origination Engine: Focus, Review, Priorities, Map and Engine, with Today, Contacts,
-Deals, Outreach, Matches, Opportunities, Organisations, Signals, Mandates, Sources, Spend, Import and Search under More.
+The private web console for the Nodus Origination Engine. Three screens run the day: **Today**, **Pipeline** and
+**Engine**. Everything else (Leads desk, Mandates, Priorities, Contacts, Deals, Outreach log, Daily report, Signals,
+Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works but is not in the nav.
 
-- **Focus** (`#/`, the home screen) opens with **Signed mandates**: one large card per mandate, built from the active
-  priorities (table `priorities`, progress from `priority_progress`). Priorities that share a linked deal (or the same
-  title before the colon) share one card with a switch per workstream, e.g. Al-Risha offtakers and investors. Each card
-  shows the paperwork from the linked deal (`deals.ncnda_signed`, `fee_signed`: "Signed", "Fee protected ✓", "NCNDA ✓"
-  or "Fee letter outstanding"), the deal's next step and date (amber when overdue), progress, the next action and
-  **Best in your network**: the top five people already in the CRM from `priority_network` (up to fifteen with
-  "See all"), each with **Draft for me** (opens Claude with the instruction), LinkedIn and Contact. A supplier priority
-  (target line Compute-Sell or Power-Sell) labels the list "Suppliers and integrators in your network" and its main
-  button is **Ask Claude: get quotes** (an anonymised RFQ). The top three priorities show; the rest are one tap away.
-  **Ask Claude** opens `claude.ai/new?q=…` with a ready instruction (and copies it); the small menu has preset asks.
-  **Do now** is the review deck, one draft at a time, priority-tagged drafts first. **Waiting on others** (collapsed)
-  lists replies with a "Draft reply with Claude" button. Calm mode (toggle in the top strip, remembered in this
-  browser, on by default for Focus, Review and Priorities) hides the strip counters and the count-up and glow effects.
+- **Today** (`#/`, the home screen): the brief's headline and an honest sending line (from
+  `daily_briefs.body.send_enabled`: true says "Approved emails go out at 09:53, 12:53 and 15:53."; false or missing says
+  sending is paused and nothing claims a send time). **Focus session**: the brief's `do_now`, three at most, one button
+  each (a Gmail link shows "Open draft in Gmail"); items with no link share one "Hand these to Claude" chat, the only
+  Claude hand-off on the screen. **Replies owed**: `daily_briefs.body.replies` (`who`, `company`, `summary`,
+  `gmail_draft_url`) with "Open draft in Gmail", plus replies logged in `outreach` that the brief does not mention
+  ("Find in Gmail"). **Approve**: the one-at-a-time deck, emails only, research card folded under "Why this person".
+  **LinkedIn**: a DM shows only when the research note says CONNECTED or the contact's notes say "LinkedIn connected";
+  everyone else is a count with their connection notes (text after "If not connected, send this note first:") one tap
+  away, with Copy, Open profile and Request sent. **Signed mandates**: one line each (rank, paperwork, next step, overdue
+  flag), opening to the full card without Claude buttons. Rules in `src/lib/today.ts` (unit-tested).
+- **Pipeline** (`#/pipeline`): open deals and warm contacts (Replied, Meeting, Qualified, NCNDA) in one list, stalled
+  first (deal `next_date` today or past; contact `next_follow_up` past or empty), most overdue first. Each row: who,
+  what's next, how late, **Draft the nudge** (one Claude chat that writes a Gmail draft in the existing thread) and
+  **Close as dead** (deal to "Closed – lost", contact to "Nurture", with Undo).
+- **Engine**: one tab bar across Map (`#/map`), Best next (`#/engine?best=1`), Matches (`#/engine`) and List
+  (`#/opportunities`). The opportunity sequencer is unchanged.
+- **Leads desk** (`#/leads`, under More): the full mandate cards with New leads and Best in your network, and
+  Background BD. This is where leads are approved in bulk and handed to Claude for outbound.
+- Claude links never ask for a paste: an instruction too long for a link is cut at a line end with a note telling
+  Claude to look up the rest (`src/lib/claude.ts`). Calm mode is on by default on Today and Pipeline.
 - **Parked drafts** (`outreach.status = 'parked'`) never appear in Review, counts, badges or LinkedIn lists. Outreach
   has a collapsed "Parked (n)" list with **Bring back**, which sets the draft back to `draft`.
 - **Enrich & draft** (opportunity page, Engine panel, Matches): asks for decision makers through `enrich_request` (the
   same path as Enrich) and opens Claude to enrich with Apollo and draft first touches for approval.
-- **Review** (`#/review`, `#/review?priority=<id>`): the deck on its own. Email: Approve & send (through
-  `outreach_decide`; the send batch sends at 09:53, 12:53 or 15:53 UK on weekdays), Skip, Edit, Later. LinkedIn: Copy &
+- **Review** (`#/review`, `#/review?priority=<id>`): the deck on its own. Email: Approve (through
+  `outreach_decide`; the send batch sends at 09:53, 12:53 or 15:53 UK on weekdays only while sending is on), Skip, Edit, Later. LinkedIn: Copy &
   open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: A, S, E, C, L. There is no Undo,
   because the database has no way to take back an approval or a skip.
 - **Priorities** (`#/priorities`): edit, reorder, pause, mark done, add. Writes go straight to `priorities` (RLS).
-- **Today** moved to `#/today`. Map and Engine leave critical power out by default; the line toggle brings it back
+- The old cockpit is the **Daily report** at `#/today` (approvals point to Today). Map and Engine leave critical power out by default; the line toggle brings it back
   (`?lines=all` on Map, `?line=all` on Engine).
 
 - **Engine** (`#/engine`): mandates and needs on the left, opportunities on the right, one line per proposed match

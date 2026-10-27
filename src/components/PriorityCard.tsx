@@ -1,33 +1,29 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { copyNow, priorityInsert, prioritySwap, priorityUpdate, type PriorityPatch } from "../lib/data.ts";
+import { priorityInsert, prioritySwap, priorityUpdate, type PriorityPatch } from "../lib/data.ts";
 import { ASKS, priorityPrompt, type AskKey } from "../lib/focus.ts";
-import { claudeLink, withCheckFirst } from "../lib/claude.ts";
+import { claudeLink } from "../lib/claude.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { Priority, PriorityProgress } from "../lib/types.ts";
 import { Icon } from "./Brand.tsx";
 import { toast } from "./Toast.tsx";
 
-const COPIED = "Copied — paste into your Nodus chat if it didn't fill";
-const TOO_LONG = "The instruction is too long for the link, so it is on your clipboard. Paste it into the new Nodus chat.";
-const NOT_COPIED = "Opening Claude. If the box is empty, copy the instruction from here and paste it.";
-
-/** What to tell Kuran after opening Claude: filled in, or paste from the clipboard. */
-export function claudeNote(copied: boolean, full: boolean): string {
-  if (!full) return copied ? TOO_LONG : "The instruction is too long for the link and could not be copied. Copy it from here and paste it.";
-  return copied ? COPIED : NOT_COPIED;
+/** What to tell Kuran after opening Claude. The instruction is always in the link; there is nothing to paste. */
+export function claudeNote(full: boolean): string {
+  return full
+    ? "Opened a Nodus chat with the instruction filled in. Press send there."
+    : "Opened a Nodus chat with the instruction filled in (shortened to fit; Claude looks up the rest). Press send there.";
 }
 
-/** Copy the instruction (inside the click) and open a new Claude chat in the Nodus project. */
+/** Open a new Claude chat in the Nodus project with the instruction filled in. */
 export function openInClaude(text: string): void {
   const { url, full } = claudeLink(text);
-  const copied = copyNow(withCheckFirst(text));
   window.open(url, "_blank", "noopener,noreferrer");
-  toast(claudeNote(copied, full), copied || full);
+  toast(claudeNote(full));
 }
 
-/** A link that opens Claude in the Nodus project with the instruction filled in, and copies the same text as a fallback. */
+/** A link that opens Claude in the Nodus project with the instruction filled in. */
 export function AskClaude({ prompt, className = "btn primary big", children }: { prompt: string; className?: string; children: React.ReactNode }) {
   const { url, full } = claudeLink(prompt);
   return (
@@ -36,7 +32,7 @@ export function AskClaude({ prompt, className = "btn primary big", children }: {
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      onClick={() => toast(claudeNote(copyNow(withCheckFirst(prompt)), full))}
+      onClick={() => toast(claudeNote(full))}
     >
       {children}
     </a>

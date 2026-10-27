@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CLAUDE_PASTE_NOTE, CLAUDE_URL_MAX, claudeLink, claudeUrl } from "../src/lib/claude.ts";
+import { CLAUDE_CUT_NOTE, CLAUDE_URL_MAX, claudeLink, claudeUrl } from "../src/lib/claude.ts";
 import { NODUS_PROJECT_ID } from "../src/config.ts";
 
 test("Claude links open a new chat in the Nodus project with the text encoded", () => {
@@ -12,14 +12,22 @@ test("Claude links open a new chat in the Nodus project with the text encoded", 
   assert.equal(u.searchParams.get("project"), "01a0f3c4-b60e-7236-8dea-4bd5402220f3");
 });
 
-test("Claude links keep under the length limit and fall back to a paste note", () => {
+test("Claude links keep under the length limit by cutting the end, never by asking for a paste", () => {
   const short = claudeLink("hello");
   assert.equal(short.full, true);
   const long = "x".repeat(CLAUDE_URL_MAX);
   const r = claudeLink(long);
   assert.equal(r.full, false);
   assert.ok(r.url.length <= CLAUDE_URL_MAX);
-  assert.equal(new URL(r.url).searchParams.get("q"), CLAUDE_PASTE_NOTE);
+  const q = new URL(r.url).searchParams.get("q") ?? "";
+  assert.ok(q.startsWith("xxxx") && q.endsWith(CLAUDE_CUT_NOTE));
+  assert.ok(!/clipboard|paste/i.test(q));
+  const cmd = claudeLink(`Nodus command: draft for these people.\n${Array.from({ length: 400 }, (_, i) => `${i + 1}. Person ${i + 1}, Some Company Limited (contact_id ${i})`).join("\n")}`);
+  const cq = new URL(cmd.url).searchParams.get("q") ?? "";
+  assert.equal(cmd.full, false);
+  assert.ok(cmd.url.length <= CLAUDE_URL_MAX);
+  assert.ok(cq.startsWith("Nodus command: draft for these people.\n1. Person 1,") && cq.includes(CLAUDE_CUT_NOTE) && cq.includes("Before doing anything"));
+  assert.ok(/\(contact_id \d+\)\n\n\[The rest/.test(cq), "cut at the end of a line");
   assert.equal(new URL(r.url).searchParams.get("project"), NODUS_PROJECT_ID);
   // encoding counts: 2,000 "&" become 6,000 characters, so 2,600 of them is too long
   assert.equal(claudeLink("&".repeat(2000)).full, true);

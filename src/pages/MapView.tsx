@@ -23,6 +23,7 @@ import { useLoad } from "../lib/useLoad.ts";
 import { fmtDate, fmtMW, fmtNumber } from "../lib/format.ts";
 import { COUNTRIES, REGION_BOUNDS, REGION_GROUPS, mandateCountries, mwOf, placeAll, regionGroup, type Precision, type RegionGroup } from "../lib/geo.ts";
 import { GATES, GATE_LABEL, LINES, LINE_COLOUR, LINE_LABEL, SIDE_LABEL, lineColour, linesParam, parseLines } from "../lib/labels.ts";
+import { EngineTabs } from "../components/EngineTabs.tsx";
 import { ExtLink, GateBadge, LineBadge, Loading, ErrorBox, useTitle } from "../components/ui.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { ResearchPanel, SelectionBar, SeqActions, SeqHint, StageChip } from "../components/Sequencer.tsx";
@@ -477,6 +478,7 @@ export default function MapView() {
       <div className="mapx-canvas" ref={box} aria-label="Map of opportunities" role="region" />
 
       <section className="map-hud map-head" aria-label="Map filters">
+        <EngineTabs className="map-tabs" />
         <div className="section-head">
           <span className="eyebrow">Global opportunities</span>
           <h1>Map</h1>

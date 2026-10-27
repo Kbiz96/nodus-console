@@ -4,6 +4,8 @@ import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { copyNow, outreachChanged, outreachDecide, outreachMarkSent } from "../lib/data.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, nextSendSlot, priorityPrompt } from "../lib/focus.ts";
+import { approvedText, isSendOn, sendStatusText } from "../lib/today.ts";
+import { useHandoffs } from "./handoff.ts";
 import { OUTREACH_KIND_LABEL } from "../lib/crm.ts";
 import { withoutParked } from "../lib/mandates.ts";
 import { fmtNumber, safeHref } from "../lib/format.ts";
@@ -17,13 +19,14 @@ import { toast } from "./Toast.tsx";
 
 interface Person { id: string; title: string | null; linkedin: string | null }
 
-async function load(priorityId: string | null, opportunityId: string | null = null) {
+async function load(priorityId: string | null, opportunityId: string | null = null, emailOnly = false) {
   let q = supabase.from("outreach").select(OUTREACH_COLS).in("status", [...DECK_STATUSES]).order("created_at", { ascending: true }).limit(300);
   if (priorityId) q = q.eq("priority_id", priorityId);
   if (opportunityId) q = q.eq("opportunity_id", opportunityId);
   // Parked drafts never reach the deck (the status filter already leaves them out; this keeps it so).
   let rows = withoutParked(must(await q) as unknown as Outreach[]);
   if (priorityId) rows = rows.filter((r) => r.priority_id === priorityId);
+  if (emailOnly) rows = rows.filter((r) => !isLinkedIn(r));
   const ids = [...new Set(rows.map((r) => r.contact_id).filter(Boolean))] as string[];
   const people = new Map<string, Person>();
   if (ids.length) {
@@ -36,11 +39,20 @@ async function load(priorityId: string | null, opportunityId: string | null = nu
 type Done = { text: string; ok: boolean };
 
 /**
- * One draft at a time. Email: approve (the send batch sends it at the next slot), skip or edit.
+ * One draft at a time. Email: approve (the send batch sends it at the next slot when sending is on), skip or edit.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
+ * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `sendEnabled` comes from today's brief.
  */
-export default function Deck({ priorities, priorityId = null, opportunityId = null, onChanged }: { priorities: Priority[]; priorityId?: string | null; opportunityId?: string | null; onChanged?: () => void }) {
-  const { data, error, loading, reload } = useLoad(() => load(priorityId, opportunityId), `deck-${priorityId ?? "all"}-${opportunityId ?? ""}`);
+export default function Deck({ priorities, priorityId = null, opportunityId = null, onChanged, emailOnly = false, sendEnabled = null }: {
+  priorities: Priority[];
+  priorityId?: string | null;
+  opportunityId?: string | null;
+  onChanged?: () => void;
+  emailOnly?: boolean;
+  sendEnabled?: boolean | null;
+}) {
+  const handoffs = useHandoffs();
+  const { data, error, loading, reload } = useLoad(() => load(priorityId, opportunityId, emailOnly), `deck-${priorityId ?? "all"}-${opportunityId ?? ""}-${emailOnly ? "email" : "all"}`);
   const [queue, setQueue] = useState<string[] | null>(null);
   const [handled, setHandled] = useState(0);
   const [last, setLast] = useState<Done | null>(null);
@@ -95,13 +107,13 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
     return (
       <div className="deck-empty">
         {last && <p className={last.ok ? "ok" : "error"} role="status">{last.text}</p>}
-        <h3>{handled > 0 ? "All done. Nothing else is waiting for you." : filtered ? "Nothing waiting on this priority." : "Nothing waiting for you."}</h3>
-        {top && (
+        <h3>{handled > 0 ? "All done. Nothing else is waiting for you." : filtered ? "Nothing waiting on this priority." : emailOnly ? "No emails waiting for approval." : "Nothing waiting for you."}</h3>
+        {top && handoffs && (
           <p className="muted">
             Want more? Ask Claude to find people and draft for {filtered ? "this priority" : `priority ${top.rank}`}.
           </p>
         )}
-        {top && (
+        {top && handoffs && (
           <div className="action-row">
             <AskClaude prompt={priorityPrompt(filtered ?? top, "find")}><Icon.claude />Ask Claude for more</AskClaude>
             {priorityId && <Link className="btn big" to="/review">Review everything else</Link>}
@@ -128,6 +140,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
         person={current.contact_id ? data?.people.get(current.contact_id) ?? null : null}
         priority={current.priority_id ? prioById.get(current.priority_id) ?? null : null}
         canLater={queue.length > 1}
+        sendEnabled={sendEnabled}
         onDone={advance}
         onLater={() => advance(null, true)}
       />
@@ -135,11 +148,12 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
   );
 }
 
-function DeckCard({ o, person, priority, canLater, onDone, onLater }: {
+function DeckCard({ o, person, priority, canLater, sendEnabled, onDone, onLater }: {
   o: Outreach;
   person: Person | null;
   priority: Priority | null;
   canLater: boolean;
+  sendEnabled: boolean | null;
   onDone: (d: Done) => void;
   onLater: () => void;
 }) {
@@ -175,7 +189,7 @@ function DeckCard({ o, person, priority, canLater, onDone, onLater }: {
       if (dirty && !manual && what !== "skip") await saveEdit();
       if (what === "approve") {
         await outreachDecide(o.id, "approve");
-        onDone({ ok: true, text: `Approved ${o.to_name ?? "the email"}. Sends at ${nextSendSlot().label}.` });
+        onDone({ ok: true, text: approvedText(o.to_name, sendEnabled, nextSendSlot().label) });
       } else if (what === "skip") {
         await outreachDecide(o.id, "skip");
         onDone({ ok: true, text: `Skipped ${o.to_name ?? "that one"}. It won't be sent.` });
@@ -256,7 +270,12 @@ function DeckCard({ o, person, priority, canLater, onDone, onLater }: {
         </div>
       )}
 
-      {o.note && <p className="deck-why"><span>Why</span>{o.note}</p>}
+      {o.note && (
+        <details className="deck-why">
+          <summary>Why this person</summary>
+          <p>{o.note}</p>
+        </details>
+      )}
 
       <div className="deck-actions">
         {li ? (
@@ -270,7 +289,7 @@ function DeckCard({ o, person, priority, canLater, onDone, onLater }: {
           </>
         ) : (
           <button className="btn big primary" type="button" disabled={Boolean(busy)} onClick={() => act("approve")}>
-            {busy === "approve" ? "Approving…" : dirty ? "Save, approve & send" : "Approve & send"}
+            {busy === "approve" ? "Approving…" : dirty ? "Save & approve" : "Approve"}
           </button>
         )}
         {!manual && (
@@ -283,7 +302,7 @@ function DeckCard({ o, person, priority, canLater, onDone, onLater }: {
         )}
         {canLater && <button className="btn big ghost" type="button" disabled={Boolean(busy)} onClick={onLater}>Later</button>}
       </div>
-      {!li && <p className="deck-hint">Nothing sends from here. Approved emails go out at the next send slot: {nextSendSlot().label} (09:53, 12:53 or 15:53 UK, weekdays).</p>}
+      {!li && <p className={`deck-hint${isSendOn(sendEnabled) ? "" : " is-paused"}`}>Nothing sends from here. {sendStatusText(sendEnabled)}</p>}
       {li && !profile && <p className="deck-hint">No LinkedIn link on this one: copy the message and find them on LinkedIn yourself.</p>}
       {li && profile && <p className="deck-hint">You send LinkedIn messages yourself. Copy, paste, send, then press Mark sent.</p>}
       {err && <p className="error" role="alert">{err}</p>}

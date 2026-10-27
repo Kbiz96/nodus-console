@@ -159,7 +159,9 @@ export function focusData(now = Date.now()) {
     const li = i % 4 === 2;
     const tag = tagOf[i];
     const slug = name.toLowerCase().replace(/[^a-z]+/g, "-");
-    contacts.push({ id: cid, name, title, company, email: `${first.toLowerCase()}@example.com`, linkedin: `https://www.linkedin.com/in/${slug}-example`, country: "GB", lines: [], side: null, category: null, stage: "New", priority: null, channel: li ? "linkedin" : "email", source: "router", signal: null, first_contact: null, last_activity: null, next_follow_up: null, do_not_contact: false, notes: null, updated_at: "2026-10-22T09:00:00Z" });
+    // A few warm people for Pipeline: some overdue, one with no follow-up date, one comfortably ahead.
+    const warm = [["Replied", day(-9)], ["Meeting", day(-3)], ["Qualified", null], ["Meeting", day(5)], ["Replied", day(-1)]][i % 7];
+    contacts.push({ id: cid, name, title, company, email: `${first.toLowerCase()}@example.com`, linkedin: `https://www.linkedin.com/in/${slug}-example`, country: "GB", lines: [], side: null, category: null, stage: warm ? warm[0] : "New", priority: null, channel: li ? "linkedin" : "email", source: "router", signal: null, first_contact: null, last_activity: null, next_follow_up: warm ? warm[1] : null, do_not_contact: false, notes: i === 6 ? "2026-10-12: LinkedIn connected" : null, updated_at: "2026-10-22T09:00:00Z" });
     const about = tag === 1
       ? ["Phase 1 capacity in Jordan", `Hello ${first},\n\nWe're working with a 50 MW campus in Jordan with phase 1 power secured and land in hand. Given ${company}'s growth in the region, would a short call next week be useful to see whether it fits your 2027 capacity plan?\n\nI can share an anonymised teaser first.\n\nBest,\nKuran`, `${company} is expanding GPU capacity in the Gulf; matched to priority 1 by the router.`]
       : tag === 2
@@ -175,7 +177,9 @@ export function focusData(now = Date.now()) {
       id, kind: li ? "dm" : i % 5 === 4 ? "followup" : "email", channel: li ? "linkedin" : "email", contact_id: cid, to_name: name,
       to_email: li ? null : `${first.toLowerCase()}@example.com`, company, subject: li ? null : about[0],
       body: li ? `Hi ${first}, ${about[1].split("\n\n")[1].split(".")[0]}. Worth a quick chat?` : about[1],
-      link: li ? `https://www.linkedin.com/in/${slug}-example` : null, sequence_step: 1, status: i === 15 ? "manual" : "draft", note: about[2],
+      link: li ? `https://www.linkedin.com/in/${slug}-example` : null, sequence_step: 1, status: i === 15 ? "manual" : "draft",
+      // LinkedIn: two say CONNECTED, one is connected per the CRM (i = 6), one is a cold lead with a connection note.
+      note: !li ? about[2] : i === 2 || i === 10 ? `${about[2] ?? "Warm."} CONNECTED (1st degree).` : i === 14 ? `${about[2] ?? "Cold lead from Apollo."}\nIf not connected, send this note first: Hi ${first}, we work on power and compute for AI campuses in Europe and the Gulf. Keen to connect.` : about[2],
       origin: "router", created_at: new Date(now - (20 - i) * 3600e3).toISOString(), approved_at: null, sent_at: null, replied_at: null,
       priority_id: tag ? pid(tag) : null,
     };
@@ -206,7 +210,13 @@ export function focusData(now = Date.now()) {
     manual: count(n, "manual"),
     last_sent_at: null,
   }));
-  return { priorities, progress, outreach: [...drafts, ...replied, ...parked], contacts, deals };
+  // A connection request drafted for a stranger: it waits for the connection, it never shows as a DM.
+  const connect = {
+    id: "eeeeeeee-5555-4000-8000-000000000001", kind: "connect", channel: "linkedin", contact_id: null, to_name: "Mateo Silva", to_email: null, company: "Lusitania Grid",
+    subject: null, body: "Hi Mateo, we help AI campuses secure power and compute in Iberia. Keen to connect.", link: "https://www.linkedin.com/in/mateo-silva-example", sequence_step: 1,
+    status: "draft", note: "Cold: no connection yet.", origin: "nodus-command", created_at: new Date(now - 2 * 3600e3).toISOString(), approved_at: null, sent_at: null, replied_at: null, priority_id: null,
+  };
+  return { priorities, progress, outreach: [...drafts, connect, ...replied, ...parked], contacts, deals };
 }
 
 // ---------- the best people already in the CRM for a priority (priority_network), all fictional ----------
@@ -301,7 +311,7 @@ export function leadCandidates() {
 // ---------- front page: today's brief, the bd_queue view and Background BD leads (all fictional) ----------
 
 /** A daily_briefs row for `day` (UK date). Every name and number is made up. */
-export function dailyBrief(day) {
+export function dailyBrief(day, sendEnabled = false) {
   return {
     day,
     created_at: `${day}T05:40:00Z`,
@@ -311,8 +321,13 @@ export function dailyBrief(day) {
         { time: "10:30", who: "Harlow Compute (CEO)", goal: "Qualify 40 MW need for phase 1; ask for LOI timing" },
         { time: "14:00", who: "Brightwater Capital", goal: "Investor intro call; confirm ticket range and NCNDA" },
       ],
+      send_enabled: sendEnabled,
+      replies: [
+        { who: "Dana Reed", company: "Penguin Cluster Co", summary: "Asked for two slots next week to talk through the 20 MW lot.", gmail_draft_url: "https://mail.google.com/mail/u/0/#drafts?compose=fixture-dana" },
+        { who: "Ash Patel", company: "Kestrel Data", summary: "Sent the NCNDA back signed and wants the teaser.", gmail_draft_url: "https://mail.google.com/mail/u/0/#drafts?compose=fixture-ash" },
+      ],
       do_now: [
-        { text: "Send the Al-Risha teaser to the three warmest neoclouds", link: "#/review" },
+        { text: "Send the Al-Risha teaser to the three warmest neoclouds", link: "https://mail.google.com/mail/u/0/#drafts?compose=fixture-teaser" },
         { text: "Chase the Basalt fee letter before Thursday" },
         { text: "Confirm the 14:00 agenda with Brightwater", link: "https://example.com/brightwater-agenda" },
       ],

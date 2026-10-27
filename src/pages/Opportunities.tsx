@@ -6,6 +6,7 @@ import { useLoad } from "../lib/useLoad.ts";
 import { fmtDate, fmtMW, fmtNumber } from "../lib/format.ts";
 import { LINES, LINE_LABEL, SIDE_LABEL } from "../lib/labels.ts";
 import FilterBar from "../components/FilterBar.tsx";
+import { EngineTabs } from "../components/EngineTabs.tsx";
 import { Empty, ErrorBox, GateBadge, Loading, Pager, useTitle } from "../components/ui.tsx";
 import { StageChip } from "../components/Sequencer.tsx";
 import { stagesFor } from "../lib/sequencer-data.ts";
@@ -67,8 +68,9 @@ export default function Opportunities() {
 
   return (
     <div className="stack">
+      <EngineTabs />
       <div className="section-head page-head-block">
-        <span className="eyebrow">Pipeline</span>
+        <span className="eyebrow">Engine</span>
         <h1>Opportunities</h1>
         <p className="muted">
           Each one is a real-world situation: someone with power, kit, land or capital to offer (supply), or someone

@@ -6,9 +6,9 @@ import { NODUS_PROJECT_ID } from "../config.ts";
 /** Keep links comfortably under the length browsers and claude.ai accept. */
 export const CLAUDE_URL_MAX = 7500;
 
-/** What the chat opens with when the full instruction is too long for a link (it is on the clipboard instead). */
-export const CLAUDE_PASTE_NOTE =
-  "Nodus command: the full instruction is on my clipboard and is too long for the link. Wait for me to paste it, then follow it.";
+/** Added when an instruction is too long for a link and had to be shortened. Nothing is ever pasted from the clipboard. */
+export const CLAUDE_CUT_NOTE =
+  "[The rest of this instruction was cut to fit the link. Look up what is missing in the CRM and outreach tables before acting, and say what you looked up.]";
 
 /**
  * Kuran's standing rule (26 Oct): before doing anything, look for what has already been done and build on it.
@@ -30,15 +30,31 @@ function build(text: string, projectId: string): string {
 
 export interface ClaudeLink {
   url: string;
-  /** False when the text was too long: the link carries a short note and the full text must be pasted. */
+  /** False when the text was too long and its end was cut (with a note saying so). There is never a paste step. */
   full: boolean;
 }
 
-/** A link to a new chat in the Nodus project, with a fallback note when the text would make the link too long. */
+/**
+ * A link to a new chat in the Nodus project. When the instruction would make the link too long, its end is cut
+ * (the opening instruction and the check-first line always survive) and a note tells Claude to look up the rest.
+ */
 export function claudeLink(text: string, projectId = NODUS_PROJECT_ID, max = CLAUDE_URL_MAX): ClaudeLink {
-  const url = build(withCheckFirst(text), projectId);
+  const full = withCheckFirst(text);
+  const url = build(full, projectId);
   if (url.length <= max) return { url, full: true };
-  return { url: build(CLAUDE_PASTE_NOTE, projectId), full: false };
+  const tail = text.startsWith("Nodus command") ? `\n\n${CHECK_FIRST}` : "";
+  const fits = (n: number) => build(`${text.slice(0, n).trimEnd()}\n\n${CLAUDE_CUT_NOTE}${tail}`, projectId).length <= max;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (fits(mid)) lo = mid;
+    else hi = mid - 1;
+  }
+  // Prefer cutting at the end of a line so no list item is half there.
+  const nl = text.lastIndexOf("\n", lo);
+  const n = nl > lo * 0.6 ? nl : lo;
+  return { url: build(`${text.slice(0, n).trimEnd()}\n\n${CLAUDE_CUT_NOTE}${tail}`, projectId), full: false };
 }
 
 /** Opens a new Claude chat in the Nodus project with the text already typed in. */

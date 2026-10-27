@@ -5,33 +5,32 @@ import { fmtNumber } from "../lib/format.ts";
 import { Icon, Logo, type IconName } from "./Brand.tsx";
 import { Toaster } from "./Toast.tsx";
 import { calmPref, remember, setCalmPref } from "../lib/calm.ts";
+import { engineTabOf } from "./EngineTabs.tsx";
 
 interface Item { to: string; label: string; icon: IconName; end?: boolean }
 
-/** The five places Kuran uses every day. Everything else sits under More. */
+/** The three screens that run Kuran's day. Everything else sits under More. */
 const PRIMARY: Item[] = [
-  { to: "/", label: "Focus", icon: "focus", end: true },
-  { to: "/review", label: "Review", icon: "review" },
-  { to: "/priorities", label: "Priorities", icon: "priorities" },
-  { to: "/map", label: "Map", icon: "map" },
-  { to: "/engine", label: "Engine", icon: "engine" },
+  { to: "/", label: "Today", icon: "focus", end: true },
+  { to: "/pipeline", label: "Pipeline", icon: "deals" },
+  { to: "/engine?best=1", label: "Engine", icon: "engine" },
 ];
 const MORE: { name: string; items: Item[] }[] = [
   {
-    name: "Pipeline",
+    name: "Work",
     items: [
-      { to: "/today", label: "Today cockpit", icon: "today" },
-      { to: "/matches", label: "Matches", icon: "matches" },
-      { to: "/opportunities", label: "Opportunities", icon: "opportunities" },
+      { to: "/leads", label: "Leads desk", icon: "review" },
       { to: "/mandates", label: "Mandates", icon: "mandates" },
-      { to: "/deals", label: "Deals", icon: "deals" },
+      { to: "/priorities", label: "Priorities", icon: "priorities" },
       { to: "/contacts", label: "Contacts", icon: "contacts" },
-      { to: "/outreach", label: "Outreach", icon: "outreach" },
+      { to: "/deals", label: "Deals", icon: "deals" },
+      { to: "/outreach", label: "Outreach log", icon: "outreach" },
     ],
   },
   {
-    name: "Intelligence",
+    name: "Data",
     items: [
+      { to: "/today", label: "Daily report", icon: "today" },
       { to: "/signals", label: "Signals", icon: "signals" },
       { to: "/sources", label: "Sources", icon: "sources" },
       { to: "/spend", label: "Spend", icon: "spend" },
@@ -41,11 +40,11 @@ const MORE: { name: string; items: Item[] }[] = [
   },
 ];
 const ALL = [...PRIMARY, ...MORE.flatMap((g) => g.items)];
-const inMore = (path: string) => MORE.some((g) => g.items.some((i) => path === i.to || path.startsWith(`${i.to}/`)));
+const inMore = (path: string) => MORE.some((g) => g.items.some((i) => path === i.to || path.startsWith(`${i.to}/`))) || path === "/review";
 
-const CALM_BY_DEFAULT = ["/", "/review", "/priorities"];
+const CALM_BY_DEFAULT = ["/", "/pipeline", "/review", "/priorities", "/leads"];
 
-/** Calm mode is on by default on Focus (and its Review and Priorities screens) until Kuran chooses; his choice is remembered in this browser. */
+/** Calm mode is on by default on Today, Pipeline and the work screens until Kuran chooses; his choice is remembered in this browser. */
 function useCalm(path: string): [boolean, () => void] {
   const [pref, setPref] = useState(() => calmPref());
   const calm = pref ? pref === "on" : CALM_BY_DEFAULT.includes(path);
@@ -90,11 +89,13 @@ export default function Layout({ email, onSignOut, children }: { email: string |
     remember("nodus-rail-more", v ? "open" : "closed");
   };
 
-  const count = (to: string) => (to === "/review" && status.drafts > 0 ? <span className="nav-count" title={`${status.drafts} drafts waiting for approval`}>{status.drafts}</span> : null);
+  const count = (to: string) => (to === "/" && status.drafts > 0 ? <span className="nav-count" title={`${status.drafts} drafts waiting for approval`}>{status.drafts}</span> : null);
+  const engineHere = engineTabOf(location.pathname, location.search) !== null;
   const link = (i: Item) => {
     const Ic = Icon[i.icon];
+    const isEngine = i.label === "Engine";
     return (
-      <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => (isActive ? "active" : undefined)}>
+      <NavLink key={i.to} to={i.to} end={i.end} className={({ isActive }) => ((isEngine ? engineHere : isActive) ? "active" : undefined)} aria-current={isEngine ? (engineHere ? "page" : undefined) : undefined}>
         <Ic />
         {i.label}
         {count(i.to)}
@@ -310,7 +311,7 @@ function StatusStrip({ s, calm, onCalm }: { s: Status; calm: boolean; onCalm: ()
         <b>{s.sourcesLive === null ? "…" : fmtNumber(s.sourcesLive)}</b>
         {s.sourcesAll !== null && <span>/ {fmtNumber(s.sourcesAll)}</span>}
       </Link>
-      <Link to="/review" className={`strip-cell${s.drafts > 0 ? " hot" : ""}`}>
+      <Link to="/" className={`strip-cell${s.drafts > 0 ? " hot" : ""}`}>
         <span className="k">To approve</span>
         <b>{fmtNumber(s.drafts)}</b>
       </Link>

@@ -97,7 +97,7 @@ test("do now: urgent live items first, the brief keeps a slot, never more than t
 test("do now: routine live items only fill spare slots; with no brief, live items take all three", () => {
   const leadsOnly = liveItems({ mandateLeads: 0, backgroundLeads: 3, drafts: 0, replies: 0 });
   assert.equal(leadsOnly[0].text, "Approve or dismiss 3 new leads");
-  assert.deepEqual(leadsOnly[0].action, { kind: "scroll", target: "bd" });
+  assert.deepEqual(leadsOnly[0].action, { kind: "route", to: "/leads" });
   assert.deepEqual(mergeDoNow(brief3.slice(0, 1), leadsOnly).now.map((d) => d.text), ["B1", "Approve or dismiss 3 new leads"]);
   const live = liveItems({ mandateLeads: 1, backgroundLeads: 0, drafts: 1, replies: 1 });
   assert.equal(live[0].text, "Answer 1 reply");

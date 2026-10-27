@@ -3,8 +3,8 @@
 import { supabase, must } from "./supabase.ts";
 import type { Filters } from "./filters.ts";
 import { nextDay, ukDayStartIso } from "./format.ts";
-import type { Deal, NetworkRow, Priority, PriorityProgress, SearchAll } from "./types.ts";
-import { ukToday } from "./crm.ts";
+import type { CrmContact, Deal, NetworkRow, Outreach, Priority, PriorityProgress, SearchAll } from "./types.ts";
+import { appendNote, ukToday } from "./crm.ts";
 import { dismissalRows, type Dismissal } from "./mandates.ts";
 import type { CrmDetails, EnrichResult } from "./enrich.ts";
 import type { ScoreCounts } from "./scoreboard.ts";
@@ -432,4 +432,54 @@ export function copyNow(text: string): boolean {
 /** Tell the nav that outreach changed, so the drafts badge refreshes. */
 export function outreachChanged(): void {
   window.dispatchEvent(new Event("nodus-outreach-changed"));
+}
+
+// ---------- Today: LinkedIn panel ----------
+
+const LI_COLS =
+  "id,kind,channel,contact_id,to_name,to_email,company,subject,body,link,sequence_step,status,note,origin,created_at,approved_at,sent_at,replied_at,priority_id";
+
+export interface LiContact { id: string; name: string | null; linkedin: string | null; notes: string | null }
+
+/** LinkedIn messages waiting for Kuran (draft or approved, never parked), with the notes of the people they go to. */
+export async function linkedinLoad(): Promise<{ rows: Outreach[]; contacts: Map<string, LiContact> }> {
+  const rows = (must(
+    await supabase.from("outreach").select(LI_COLS).in("status", ["draft", "manual"]).or("channel.eq.linkedin,kind.in.(dm,connect)").order("created_at", { ascending: true }).limit(300),
+  ) as unknown as Outreach[]).filter((r) => r.status !== "parked");
+  const ids = [...new Set(rows.map((r) => r.contact_id).filter(Boolean))] as string[];
+  const contacts = new Map<string, LiContact>();
+  if (ids.length) {
+    const cs = must(await supabase.from("crm_contacts").select("id,name,linkedin,notes").in("id", ids.slice(0, 300))) as unknown as LiContact[];
+    for (const c of cs) contacts.set(c.id, c);
+  }
+  return { rows, contacts };
+}
+
+/** Kuran sent a connection request himself: noted on the contact so the next brief knows. */
+export async function linkedinRequestSent(contactId: string, existing: string | null): Promise<void> {
+  await contactUpdate(contactId, { notes: appendNote(existing, "LinkedIn connection request sent") });
+}
+
+// ---------- Pipeline ----------
+
+const PIPE_DEAL_COLS = "id,deal,counterparty,stage,next_step,next_date,contact_id,heat,rank";
+const PIPE_CONTACT_COLS = "id,name,company,stage,next_follow_up,email,last_activity";
+
+export type PipeDeal = Pick<Deal, "id" | "deal" | "counterparty" | "stage" | "next_step" | "next_date" | "contact_id" | "heat" | "rank">;
+export type PipeContact = Pick<CrmContact, "id" | "name" | "company" | "stage" | "next_follow_up" | "email" | "last_activity">;
+
+/** Open deals, warm contacts (Replied, Meeting, Qualified, NCNDA) and the people behind the deals. */
+export async function pipelineLoad(): Promise<{ deals: PipeDeal[]; contacts: PipeContact[]; people: PipeContact[] }> {
+  const [d, c] = await Promise.all([
+    // Closed deals are left out in pipelineRows (a stage filter here would also drop deals with no stage).
+    supabase.from("deals").select(PIPE_DEAL_COLS).limit(1000),
+    supabase.from("crm_contacts").select(PIPE_CONTACT_COLS).in("stage", ["Replied", "Meeting", "Qualified", "NCNDA"]).limit(1000),
+  ]);
+  const deals = must(d) as unknown as PipeDeal[];
+  const contacts = must(c) as unknown as PipeContact[];
+  const have = new Set(contacts.map((x) => x.id));
+  const missing = [...new Set(deals.map((x) => x.contact_id).filter((id): id is string => Boolean(id) && !have.has(id as string)))];
+  // People behind a deal give it a name and an email; they are not rows of their own unless they are warm.
+  const people = missing.length ? (must(await supabase.from("crm_contacts").select(PIPE_CONTACT_COLS).in("id", missing.slice(0, 300))) as unknown as PipeContact[]) : [];
+  return { deals, contacts, people };
 }

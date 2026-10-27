@@ -5,6 +5,7 @@ import { findMorePrompt, moveCursor, sourceLabel, writeOutboundPrompt, type Lead
 import { lineChip } from "../lib/brief.ts";
 import type { Priority } from "../lib/types.ts";
 import { AskClaude, openInClaude } from "./PriorityCard.tsx";
+import { useHandoffs } from "./handoff.ts";
 import { Icon } from "./Brand.tsx";
 
 const FIRST = 6;
@@ -41,7 +42,8 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent,
   const scopeLabel = p ? `Priority ${p.rank}, ${workstreamLabel(p).toLowerCase()}` : "Background BD";
   const sentSet = new Set(sent);
   const toWrite = approved.filter((r) => !sentSet.has(r.id));
-  const find = findSlot ?? (p ? (
+  const handoffs = useHandoffs();
+  const find = !handoffs ? null : findSlot ?? (p ? (
     <AskClaude className="btn lead-find" prompt={findMorePrompt(p)}><Icon.claude />Find 50 more</AskClaude>
   ) : null);
 
@@ -135,7 +137,7 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent,
         <div className="lead-ok" role="region" aria-label={`Approved (${approved.length})`}>
           <div className="lead-ok-head">
             <h5>Approved ({fmtNumber(approved.length)})</h5>
-            <span className="muted small">{toWrite.length > 0 ? "Ready for outbound" : "With Claude. Drafts land in Review."}</span>
+            <span className="muted small">{toWrite.length > 0 ? (handoffs ? "Ready for outbound" : "Write their outbound on the Leads desk") : "With Claude. Drafts land in Review."}</span>
           </div>
           <ul className="lead-ok-list">
             {approved.map((r) => {
@@ -155,7 +157,7 @@ export function LeadQueue({ p, fresh, approved, loading, onDecide, sent, onSent,
               );
             })}
           </ul>
-          {toWrite.length > 0 && (
+          {handoffs && toWrite.length > 0 && (
             <button type="button" className="btn primary big lead-write" onClick={write}>
               <Icon.claude />Write outbound for {fmtNumber(toWrite.length)}
             </button>
