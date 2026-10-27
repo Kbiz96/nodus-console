@@ -1,16 +1,24 @@
 // nodus-apollo: the console's only bridge to Apollo.io.
 //   send   {outreach_id, sequence?}   draft/approved email -> Apollo contact (+ custom fields) -> sequence. Marks the row sent.
-//   find   {query, mandate_id?, find_request_id?}   engine matches first, then Apollo people search (free, no emails).
+//   find   {query, mandate_id?, find_request_id?}   engine matches first, then Apollo qualified against the mandate's rails
+//          (criteria + card.icp): one page of company search (Apollo may count credits on some plans), then people
+//          search at those companies (free, no emails). Nothing is revealed here.
 //   enrich {lead_candidate_id}         reveal one business email (1 Apollo credit), only on an explicit click.
+//   draft  {lead_candidate_id}         not done here: drafting stays a Claude hand-off ({ok:false, reason:'use_claude'}).
+//   opportunity {text}                 new mandate card from a sentence (simple rules), then Find on it.
 // Auth: the gateway verifies the JWT (verify_jwt = true); this function then asks the database whether the caller is
 // on the console allow-list (nodus_is_kuran) and does every read and write as that user, under row-level security.
 // The Apollo key comes from the APOLLO_API_KEY secret. It is never logged, echoed or returned.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import {
+  type Criteria, type Icp, type Org, type Rails, type SeqKey, DEFAULT_TITLES, classTags, defaultIcp, headcountRanges, icpTitles, lineOf,
+  nextLabel, parseOpportunity, regionLocations, scoreResult,
+} from "./rails.ts";
 
 const APOLLO = "https://api.apollo.io/api/v1";
 const FROM_ACCOUNT_ID = "69970533e4a92b0011f30d43";
 
-type SeqKey = "capital" | "compute" | "land" | "equipment";
+const SETUP = "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY";
 const SEQUENCES: Record<SeqKey, { id: string; name: string; from: string }> = {
   capital: { id: "6ae0955be36fa500181c4307", name: "Capital / investors", from: "kuran@nodus.partners" },
   compute: { id: "6ae09565caace1000c667d73", name: "Offtake / compute / financing", from: "kuran@nodus.partners" },
@@ -23,7 +31,7 @@ const FIELD = {
   email2: "6ae0ced053abcb000c5d782e",
   email3: "6ae0ced0fecca8000c28529c",
 };
-const BLOCKED_STAGES = ["replied", "meeting", "declined", "bounced"];
+const BLOCKED_STAGES = ["replied", "meeting", "declined", "opted out", "bounced"];
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -176,63 +184,68 @@ async function send(db: SupabaseClient, key: string, b: { outreach_id?: string; 
 
 // ---------- find ----------
 
-const TITLES: Record<SeqKey, string[]> = {
-  capital: ["Managing Director", "Partner", "Chief Investment Officer", "CIO", "Head of Infrastructure", "Head of Private Markets"],
-  compute: ["CTO", "VP Infrastructure", "Head of Procurement", "Head of Capacity"],
-  land: ["CEO", "Development Director", "Head of Development"],
-  equipment: ["Head of Procurement", "COO", "Procurement Director"],
-};
-const INVESTOR_TAGS = ["infrastructure fund", "private equity", "sovereign wealth fund", "pension fund", "family office", "infrastructure investment"];
-const BIG_RANGES = ["51,100", "101,200", "201,500", "501,1000", "1001,2000", "2001,5000", "5001,10000", "10001,1000000"];
-const REGIONS: [RegExp, string[]][] = [
-  [/\b(mena|middle east|gcc|gulf)\b/i, ["United Arab Emirates", "Saudi Arabia", "Qatar", "Kuwait", "Bahrain", "Oman"]],
-  [/\b(uae|dubai|abu dhabi)\b/i, ["United Arab Emirates"]],
-  [/\b(uk|united kingdom|britain|london)\b/i, ["United Kingdom"]],
-  [/\b(us|usa|united states|america)\b/i, ["United States"]],
-  [/\b(nordics?|nordic)\b/i, ["Norway", "Sweden", "Finland", "Denmark", "Iceland"]],
-  [/\b(europe|eu)\b/i, ["Europe"]],
-];
-
-/** Cheap parse of a plain-English Find: line, regions, a minimum ticket. */
-export function parseQuery(q: string): { line: SeqKey; locations: string[]; min_ticket_usd: number | null } {
-  const t = q.toLowerCase();
-  let line: SeqKey = "compute";
-  if (/\b(investor|investors|capital|fund|funds|equity|lp|lps|credit|financing|co-invest)\b/.test(t)) line = "capital";
-  else if (/\b(site|sites|land|powered[- ]shell|developer|developers)\b/.test(t)) line = "land";
-  else if (/\b(genset|gensets|turbine|turbines|equipment|rfq|procurement)\b/.test(t)) line = "equipment";
-  const locations = [...new Set(REGIONS.filter(([re]) => re.test(q)).flatMap(([, l]) => l))];
-  const m = t.match(/\$?\s*(\d+(?:\.\d+)?)\s*(m|mn|million|bn|b|billion)\b\s*\+?/);
-  const min = m ? Number(m[1]) * (/^b/.test(m[2]) ? 1e9 : 1e6) : null;
-  return { line, locations, min_ticket_usd: line === "capital" ? min : null };
-}
-
+type Mandate = { id: string; label: string; line: string; kind: string | null; holder: string | null; criteria: Criteria | null; card: Record<string, unknown> | null };
 type Person = {
   id?: string; name?: string; first_name?: string; last_name?: string; last_name_obfuscated?: string; title?: string;
-  linkedin_url?: string; country?: string; has_email?: boolean;
-  organization?: { name?: string; primary_domain?: string; website_url?: string; estimated_num_employees?: number; annual_revenue?: number; annual_revenue_printed?: string; industry?: string };
+  linkedin_url?: string; country?: string; has_email?: boolean; organization_id?: string; organization?: Org;
 };
 
-async function find(db: SupabaseClient, key: string | undefined, b: { query?: string; mandate_id?: string; find_request_id?: string }) {
+/** Apollo's documented form for search filters: query parameters, arrays as name[]. */
+function qs(params: Record<string, string | number | boolean | string[] | undefined>): URLSearchParams {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || (Array.isArray(v) && v.length === 0)) continue;
+    if (Array.isArray(v)) for (const x of v) q.append(`${k}[]`, x);
+    else q.set(k, String(v));
+  }
+  return q;
+}
+
+/** Who the mandate is looking for: the line used for size proxies and default titles. */
+function targetLine(m: Mandate | null, query: string): SeqKey {
+  if (!m) return lineOf(query);
+  if (m.kind === "capital_ask") return "capital";
+  if (m.kind === "investor_mandate") return "land";
+  if (m.kind === "site") return "compute";
+  return lineOf(query, m.line);
+}
+
+async function findCore(db: SupabaseClient, key: string | undefined, b: { query?: string; mandate_id?: string; find_request_id?: string }, email: string | null) {
   const query = (b.query ?? "").trim();
-  if (!query && !b.mandate_id) return fail("bad_request", { message: "query or mandate_id is required" });
-  const parsed = parseQuery(query);
+  if (!query && !b.mandate_id) return { ok: false as const, reason: "bad_request", message: "query or mandate_id is required" };
 
   // The mandate: given, or the active mandate whose holder or asset the query names.
-  type M = { id: string; label: string; line: string; kind: string | null; holder: string | null; criteria: Record<string, unknown>; card: Record<string, unknown> };
-  let mandate: M | null = null;
-  const { data: ms } = await db.from("mandates").select("id,label,line,kind,holder,criteria,card").eq("active", true).limit(200);
-  const all = (ms ?? []) as M[];
+  const { data: ms } = await db.from("mandates").select("id,label,line,kind,holder,criteria,card").eq("active", true).limit(300);
+  const all = (ms ?? []) as Mandate[];
+  let mandate: Mandate | null = null;
   if (b.mandate_id) mandate = all.find((m) => m.id === b.mandate_id) ?? null;
-  else if (query) {
+  else {
     const toks = query.toLowerCase().split(/[^a-z0-9-]+/).filter((w) => w.length >= 5);
-    const hits = all.filter((m) => toks.some((w) => `${m.holder ?? ""} ${String(m.card?.asset ?? "")}`.toLowerCase().includes(w)));
-    const wantKind = parsed.line === "capital" ? "capital_ask" : null;
+    const hits = all.filter((m) => toks.some((w) => `${m.holder ?? ""} ${String(m.card?.asset ?? "")} ${m.label}`.toLowerCase().includes(w)));
+    const wantKind = lineOf(query) === "capital" ? "capital_ask" : null;
     mandate = hits.find((m) => wantKind && m.kind === wantKind) ?? hits[0] ?? null;
   }
-  const minTicket = Number(mandate?.criteria?.min_ticket_usd ?? parsed.min_ticket_usd ?? 0) || null;
-  const line: SeqKey = mandate && !query ? (mandate.line === "capital" ? "capital" : mandate.line === "powered_land" ? "land" : mandate.line === "critical_power" ? "equipment" : "compute") : parsed.line;
 
-  // Engine matches first.
+  // The rails: the card's criteria and ICP; without a card, what the query itself says.
+  const line = targetLine(mandate, query);
+  const criteria: Criteria = { ...(mandate?.criteria ?? {}) };
+  if (!mandate) {
+    const p = parseOpportunity(query);
+    if (line === "capital" && p.criteria.min_ticket_usd) criteria.min_ticket_usd = p.criteria.min_ticket_usd;
+    if (p.criteria.region_pref) criteria.region_pref = p.criteria.region_pref;
+  }
+  const icp = ((mandate?.card?.icp ?? {}) as Icp);
+  const rails: Rails = {
+    line,
+    criteria,
+    titles: icpTitles(icp.titles).length ? icpTitles(icp.titles) : DEFAULT_TITLES[line],
+    locations: regionLocations(criteria.region_pref),
+    tags: classTags(criteria.class as string[] | undefined, line),
+    rules: [...(criteria.exclude ?? []), ...(icp.disqualify ?? []), ...((icp.never as string[] | undefined) ?? [])].map(String),
+  };
+  const ranges = headcountRanges(criteria, line);
+
+  // 1. Engine matches first.
   let engine: unknown[] = [];
   if (mandate) {
     const { data: mb } = await db.from("match_board")
@@ -242,86 +255,142 @@ async function find(db: SupabaseClient, key: string | undefined, b: { query?: st
       (r.need_side?.name ?? "").toLowerCase() !== (r.supply_side?.name ?? "").toLowerCase());
   }
 
-  // Apollo people search (free; no emails).
-  const big = line === "capital" && (minTicket ?? 0) >= 100e6;
-  const body: Record<string, unknown> = { person_titles: TITLES[line], per_page: 25, page: 1 };
-  if (parsed.locations.length) body.organization_locations = parsed.locations;
-  if (line === "capital") body.q_organization_keyword_tags = INVESTOR_TAGS;
-  if (big) body.organization_num_employees_ranges = BIG_RANGES;
-  // Without a key the engine's own matches still come back; Apollo is skipped and the caller is told why.
-  const res = key ? await apollo(key, "/mixed_people/api_search", { body }) : {};
-  const people = ((res.people ?? []) as Person[]).concat((res.contacts ?? []) as Person[]);
+  const notes: string[] = [];
+  let people: Person[] = [];
+  const orgs = new Map<string, Org>();
+  if (key) {
+    // 2a. Companies that fit the rails (type, region, headcount proxy for size).
+    if (rails.tags.length || ranges.length) {
+      try {
+        const res = await apollo(key, "/mixed_companies/search", {
+          query: qs({ "q_organization_keyword_tags": rails.tags, "organization_locations": rails.locations, "organization_num_employees_ranges": ranges, per_page: 25, page: 1 }),
+        });
+        for (const o of ((res.organizations ?? []) as Org[]).concat((res.accounts ?? []) as Org[])) if (o.id) orgs.set(o.id, o);
+      } catch (e) {
+        if (!(e instanceof ApolloError) || e.reason === "apollo_auth" || e.reason === "rate_limited") throw e;
+        notes.push(`Company search unavailable (${e.status}); searched people by filters instead.`);
+      }
+    }
+    // 2b. Decision makers at those companies (or by the same filters when there are none). Free; no emails.
+    const base = { "person_titles": rails.titles, include_similar_titles: true, per_page: 25, page: 1 };
+    const filt = orgs.size
+      ? { ...base, "organization_ids": [...orgs.keys()] }
+      : { ...base, "organization_locations": rails.locations, "q_organization_keyword_tags": rails.tags, "organization_num_employees_ranges": ranges };
+    const res = await apollo(key, "/mixed_people/api_search", { query: qs(filt) });
+    people = ((res.people ?? []) as Person[]).concat((res.contacts ?? []) as Person[]).filter((p) => p.id);
+  }
 
-  const sizeEvidence = (p: Person) => {
-    const o = p.organization ?? {};
-    const bits = [o.estimated_num_employees ? `${o.estimated_num_employees} employees` : null, o.annual_revenue_printed ? `revenue ${o.annual_revenue_printed}` : null, o.industry ?? null].filter(Boolean);
-    return bits.length ? `${bits.join(", ")} (Apollo)` : null;
-  };
   const nameOf = (p: Person) => (p.name || [p.first_name, p.last_name || p.last_name_obfuscated].filter(Boolean).join(" ")).trim();
+  let excluded = 0;
+  const scored = people.map((p) => {
+    const o: Org | undefined = (p.organization_id && orgs.get(p.organization_id)) || p.organization;
+    const s = scoreResult(p, o, rails);
+    return { p, o, s };
+  }).filter(({ s }) => { if (s.excluded) excluded++; return !s.excluded; });
 
-  // Skip anyone already known.
-  const companies = [...new Set(people.map((p) => p.organization?.name).filter(Boolean))] as string[];
+  // Skip anyone already known: CRM, earlier leads, dismissed, or already written to.
+  const companies = [...new Set(scored.map(({ o }) => o?.name).filter(Boolean))] as string[];
+  const ids = scored.map(({ p }) => p.id!) as string[];
   const known = new Set<string>();
-  if (companies.length) {
-    const [{ data: cc }, { data: lc }] = await Promise.all([
-      db.from("crm_contacts").select("name,company").in("company", companies).limit(1000),
-      db.from("lead_candidates").select("name,company,source_ref").in("company", companies).limit(1000),
+  const k = (n: string | null | undefined, c: string | null | undefined) => `${(n ?? "").toLowerCase().trim()}|${(c ?? "").toLowerCase().trim()}`;
+  if (companies.length || ids.length) {
+    const [cc, lc, lr, ou, nd] = await Promise.all([
+      companies.length ? db.from("crm_contacts").select("name,company").in("company", companies).limit(2000) : { data: [] },
+      companies.length ? db.from("lead_candidates").select("name,company").in("company", companies).limit(2000) : { data: [] },
+      ids.length ? db.from("lead_candidates").select("source_ref").in("source_ref", ids).limit(500) : { data: [] },
+      companies.length ? db.from("outreach").select("to_name,company").in("company", companies).limit(2000) : { data: [] },
+      db.from("network_dismissals").select("contact_id").limit(5000),
     ]);
-    for (const r of [...(cc ?? []), ...(lc ?? [])] as { name: string; company: string; source_ref?: string }[]) {
-      known.add(`${r.name}|${r.company}`.toLowerCase());
-      if (r.source_ref) known.add(`ref:${r.source_ref}`);
+    for (const r of (cc.data ?? []) as { name: string; company: string }[]) known.add(k(r.name, r.company));
+    for (const r of (lc.data ?? []) as { name: string; company: string }[]) known.add(k(r.name, r.company));
+    for (const r of (lr.data ?? []) as { source_ref: string }[]) known.add(`ref:${r.source_ref}`);
+    for (const r of (ou.data ?? []) as { to_name: string; company: string }[]) known.add(k(r.to_name, r.company));
+    const dismissed = ((nd.data ?? []) as { contact_id: string | null }[]).map((r) => r.contact_id).filter(Boolean) as string[];
+    if (dismissed.length && companies.length) {
+      const { data: dc } = await db.from("crm_contacts").select("name,company").in("id", dismissed.slice(0, 1000));
+      for (const r of (dc ?? []) as { name: string; company: string }[]) known.add(k(r.name, r.company));
     }
   }
+
+  const out = scored.map(({ p, o, s }) => {
+    const name = nameOf(p);
+    const company = o?.name ?? null;
+    const why = [`${p.title ?? "Senior"} at ${company ?? "unknown firm"}`, s.rails.length ? `rails met: ${s.rails.join(", ")}` : "no rail confirmed", mandate ? `for ${mandate.label}` : null].filter(Boolean).join("; ");
+    return {
+      apollo_id: p.id!, name, title: p.title ?? null, company, domain: o?.primary_domain ?? null, linkedin: p.linkedin_url ?? null,
+      country: p.country ?? null, has_email: p.has_email ?? null, rails: s.rails, fit_score: s.fit_score, size_evidence: s.size_evidence, why,
+      known: known.has(`ref:${p.id}`) || known.has(k(name, company)),
+    };
+  });
+  const fresh = out.filter((p) => !p.known && p.name).sort((a, b) => b.fit_score - a.fit_score);
+  const skipped = out.length - fresh.length;
+
   let priorityId: string | null = null;
   if (mandate) {
     const { data: pr } = await db.from("priorities").select("id").eq("status", "active").contains("mandate_ids", [mandate.id]).order("rank").limit(1);
     priorityId = pr?.[0]?.id ?? null;
   }
-  const out = people.filter((p) => p.id).map((p) => {
-    const name = nameOf(p);
-    const company = p.organization?.name ?? null;
-    const ev = sizeEvidence(p);
-    const why = [
-      `${p.title ?? "Senior"} at ${company ?? "unknown firm"}`,
-      line === "capital" ? "investor organisation (Apollo keyword tags)" : null,
-      big ? (ev ? `scale: ${ev}` : "scale unknown") : null,
-      mandate ? `for ${mandate.label}` : null,
-    ].filter(Boolean).join("; ");
-    return { apollo_id: p.id!, name, title: p.title ?? null, company, domain: p.organization?.primary_domain ?? null, linkedin: p.linkedin_url ?? null, country: p.country ?? null, has_email: p.has_email ?? null, size_evidence: ev, why, known: known.has(`${name}|${company}`.toLowerCase()) || known.has(`ref:${p.id}`) };
-  });
-
-  const fresh = out.filter((p) => !p.known && p.name);
   let inserted: { id: string; source_ref: string }[] = [];
   if (fresh.length) {
     const rows = fresh.map((p) => ({
       priority_id: priorityId, name: p.name, title: p.title, company: p.company, company_domain: p.domain, linkedin: p.linkedin, country: p.country,
-      source: "apollo-find", source_ref: p.apollo_id, status: "new",
-      fit_score: p.size_evidence ? 70 : 55, fit_reason: `${p.why}${p.size_evidence ? "" : "; size evidence: none in Apollo"}`.slice(0, 500),
-      hook: query || mandate?.label || null,
+      source: "apollo-find", source_ref: p.apollo_id, status: "new", fit_score: p.fit_score,
+      fit_reason: `${p.why}; size: ${p.size_evidence}`.slice(0, 600), hook: (mandate?.label ?? query) || null,
     }));
     const { data: ins } = await db.from("lead_candidates").upsert(rows, { onConflict: "priority_id,name,company", ignoreDuplicates: true }).select("id,source_ref");
     inserted = (ins ?? []) as { id: string; source_ref: string }[];
   }
   const leadId = new Map(inserted.map((r) => [r.source_ref, r.id]));
-  if (out.some((p) => p.known)) {
-    const { data: lc2 } = await db.from("lead_candidates").select("id,source_ref").in("source_ref", out.map((p) => p.apollo_id)).limit(200);
-    for (const r of (lc2 ?? []) as { id: string; source_ref: string }[]) if (!leadId.has(r.source_ref)) leadId.set(r.source_ref, r.id);
-  }
-  const results = out.map((p) => ({ ...p, lead_candidate_id: leadId.get(p.apollo_id) ?? null }));
-  const note = big
-    ? "Apollo has no fund-size filter: $100m+ is screened by organisation type (infrastructure, PE, sovereign, pension, family office) and scale (51+ employees). Check size_evidence before drafting."
-    : null;
+  const results = fresh.map((p) => ({ ...p, lead_candidate_id: leadId.get(p.apollo_id) ?? null }));
 
-  const record = { parsed: { ...parsed, line, min_ticket_usd: minTicket, mandate_id: mandate?.id ?? null }, results: { engine: engine.length, apollo: results.length, added: inserted.length, note } };
-  // With no Apollo key the request stays queued for the engine's next run; otherwise it is answered.
+  if (!key) notes.push("Apollo skipped: no API key yet.");
+  else notes.push("Apollo has no fund-size or MW filter: size is a headcount/revenue proxy. Check size_evidence before drafting.");
+  if (excluded) notes.push(`${excluded} dropped for the card's exclude/disqualify rules.`);
+  if (skipped) notes.push(`${skipped} already known (CRM, leads, dismissed or written to) and left out.`);
+  const note = notes.join(" ");
+
+  const parsed = { line, mandate_id: mandate?.id ?? null, titles: rails.titles, locations: rails.locations, tags: rails.tags, headcount: ranges, rules: rails.rules };
+  const summary = {
+    engine: engine.length, apollo: results.length, added: inserted.length, excluded, skipped, note,
+    people: results.slice(0, 25).map((p) => ({ lead_candidate_id: p.lead_candidate_id, name: p.name, title: p.title, company: p.company, rails: p.rails, fit_score: p.fit_score, size_evidence: p.size_evidence })),
+  };
+  // Without an Apollo key the request stays queued for the engine's next run; otherwise it is answered.
   const status = key ? "done" : "queued";
-  if (b.find_request_id) await db.from("find_requests").update({ status, ...record, updated_at: new Date().toISOString() }).eq("id", b.find_request_id);
-  else if (query) await db.from("find_requests").insert({ query, status, ...record });
+  const recordQuery = query || mandate?.label || "";
+  if (b.find_request_id) await db.from("find_requests").update({ status, parsed, results: summary, updated_at: new Date().toISOString() }).eq("id", b.find_request_id);
+  else if (recordQuery) await db.from("find_requests").insert({ query: recordQuery, status, parsed, results: summary, created_by: email });
 
-  return json(200, {
-    ok: true, mandate: mandate ? { id: mandate.id, label: mandate.label } : null, parsed: record.parsed, engine, people: results, added: inserted.length, note,
-    ...(key ? {} : { apollo_skipped: "missing_api_key", message: "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY" }),
+  return {
+    ok: true as const, mandate: mandate ? { id: mandate.id, label: mandate.label, approach: icp.approach ?? null } : null, parsed, engine, people: results,
+    added: inserted.length, excluded, skipped, note,
+    ...(key ? {} : { apollo_skipped: "missing_api_key", message: SETUP }),
+  };
+}
+
+async function find(db: SupabaseClient, key: string | undefined, b: { query?: string; mandate_id?: string; find_request_id?: string }, email: string | null) {
+  const r = await findCore(db, key, b, email);
+  return r.ok ? json(200, r) : fail(r.reason, { message: r.message });
+}
+
+// ---------- opportunity ----------
+
+/** Kuran types an opportunity: it becomes a mandate card (kind guessed by simple rules, confidence 'stated'), then Find runs on it. */
+async function opportunity(db: SupabaseClient, key: string | undefined, b: { text?: string }, email: string | null) {
+  const text = (b.text ?? "").trim();
+  if (text.length < 8) return fail("bad_request", { message: "Describe the opportunity in a sentence." });
+  const p = parseOpportunity(text);
+  const { data: labels } = await db.from("mandates").select("label").limit(2000);
+  const label = nextLabel(((labels ?? []) as { label: string }[]).map((r) => r.label), p.kind, p.line);
+  const { data: id, error } = await db.rpc("mandate_save", {
+    p_id: null, p_label: label, p_line: p.line, p_side: p.side, p_criteria: p.criteria, p_capital_circle: false, p_active: true,
   });
+  if (error || !id) return fail("db_error", { message: error?.message ?? "The mandate was not saved." });
+  const today = new Date().toISOString().slice(0, 10);
+  const card = { notes: `${today}: ${text}`, source: "console", icp: defaultIcp(p.kind, p.line) };
+  const { error: ue } = await db.from("mandates").update({ kind: p.kind, confidence: "stated", card, active: true }).eq("id", id);
+  if (ue) return fail("db_error", { message: ue.message, mandate_id: id });
+  const found = await findCore(db, key, { query: text, mandate_id: id as string }, email);
+  return json(200, { ok: true, created: { id, label, kind: p.kind, line: p.line, criteria: p.criteria }, find: found });
 }
 
 // ---------- enrich ----------
@@ -363,17 +432,23 @@ Deno.serve(async (req) => {
   const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_ANON_KEY")!, {
     global: { headers: { Authorization: auth } }, auth: { persistSession: false },
   });
+  // The console's allow-list is the app_users table: the caller's JWT email must be on it (nodus_is_kuran checks exactly that).
+  const { data: u, error: ue } = await db.auth.getUser(auth.replace(/^Bearer\s+/, ""));
+  const email = u?.user?.email ?? null;
+  if (ue || !email) return json(401, { ok: false, reason: "unauthorised" });
   const { data: allowed, error: ae } = await db.rpc("nodus_is_kuran");
   if (ae || allowed !== true) return json(403, { ok: false, reason: "not_allowed" });
 
   let b: Record<string, string | undefined> = {};
   try { b = await req.json(); } catch { return fail("bad_request", { message: "JSON body expected" }); }
   const key = Deno.env.get("APOLLO_API_KEY") || undefined;
-  const noKey = () => fail("missing_api_key", { message: "Add your Apollo API key in Supabase → Edge Functions → Secrets as APOLLO_API_KEY" });
+  const noKey = () => fail("missing_api_key", { message: SETUP });
   try {
     if (b.action === "send") return key ? await send(db, key, b) : noKey();
-    if (b.action === "find") return await find(db, key, b);
+    if (b.action === "find") return await find(db, key, b, email);
     if (b.action === "enrich") return key ? await enrich(db, key, b) : noKey();
+    if (b.action === "draft") return fail("use_claude", { message: "Drafting is done by Claude: use Draft, which opens a Nodus chat." });
+    if (b.action === "opportunity") return await opportunity(db, key, b, email);
     return fail("unknown_action");
   } catch (e) {
     if (e instanceof ApolloError) return fail(e.reason, { status: e.status, message: e.message });
