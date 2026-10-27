@@ -57,6 +57,13 @@ export function gmailSearchUrl(q: string): string {
   return `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(q)}`;
 }
 
+/** A Google Calendar "new event" link with the title (and details) filled in; Kuran picks the time. */
+export function calendarUrl(title: string, details = ""): string {
+  const p = new URLSearchParams({ action: "TEMPLATE", text: title });
+  if (details) p.set("details", details);
+  return `https://calendar.google.com/calendar/render?${p.toString()}`;
+}
+
 // ---------- LinkedIn: connected or not ----------
 
 export const NOTE_LEAD = "If not connected, send this note first:";

@@ -1387,8 +1387,9 @@ details.deck-why p { margin: 0.45rem 0 0; color: var(--ink-2); font-size: 14px; 
 .pipe-foot { margin: 0; }
 @media (min-width: 900px) {
   .pipe-row { grid-template-columns: minmax(12rem, 1.2fr) minmax(0, 1.6fr) 9.5rem auto; grid-template-areas: "who next late acts"; align-items: center; }
-  .pipe-acts { justify-content: flex-end; flex-wrap: nowrap; }
+  .pipe-acts { justify-content: flex-end; max-width: 16.5rem; }
 }
+@media (min-width: 1400px) { .pipe-acts { flex-wrap: nowrap; max-width: none; } }
 @media (max-width: 639px) { .pipe-acts .btn { min-height: 40px; } }
 
 /* Engine tabs: one bar across Map, Best next, Matches and List */

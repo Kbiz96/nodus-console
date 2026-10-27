@@ -5,7 +5,7 @@ import { useLoad } from "../lib/useLoad.ts";
 import { fmtDay, ukToday } from "../lib/crm.ts";
 import { fmtNumber } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
-import { nudgePrompt, overdueLabel, pipelineRows, type PipeRow } from "../lib/today.ts";
+import { calendarUrl, gmailSearchUrl, nudgePrompt, overdueLabel, pipelineRows, type PipeRow } from "../lib/today.ts";
 import { AskClaude } from "../components/PriorityCard.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { toast } from "../components/Toast.tsx";
@@ -104,6 +104,8 @@ function Row({ r, divider, onDead }: { r: PipeRow; divider: boolean; onDead: () 
       <p className={`pipe-late${r.stalled ? " is-late" : ""}`}>{late || (r.due ? `Due ${fmtDay(r.due)}` : "")}</p>
       <div className="pipe-acts">
         <AskClaude className={`btn small${r.stalled ? " primary" : ""}`} prompt={nudgePrompt(r)}><Icon.claude />Draft the nudge</AskClaude>
+        <a className="btn small ghost" href={gmailSearchUrl(r.email || [r.who, r.company].filter(Boolean).join(" "))} target="_blank" rel="noopener noreferrer" title="Find the thread in Gmail">Gmail<Icon.external /></a>
+        <a className="btn small ghost" href={calendarUrl(`${r.who}${r.company && r.company !== r.who ? ` (${r.company})` : ""}: ${r.next}`, `${r.what}. Next step: ${r.next}`)} target="_blank" rel="noopener noreferrer" title="Add a Google Calendar event">Calendar<Icon.external /></a>
         <button type="button" className="btn small ghost" onClick={onDead}>Close as dead</button>
       </div>
     </li>

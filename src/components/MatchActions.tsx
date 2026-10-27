@@ -1,8 +1,8 @@
 import { useState } from "react";
-import { downloadJson, matchDecide, matchExport, matchReject } from "../lib/data.ts";
+import { matchDecide, matchReject, matchToDeal } from "../lib/data.ts";
 import { NOTE_MAX, REJECT_REASONS, rejectProblem } from "../lib/feedback.ts";
-import { exportFilename } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
+import { toast } from "./Toast.tsx";
 
 export default function MatchActions({ id, status, onChanged }: { id: string; status: string; onChanged?: () => void }) {
   const [pending, setPending] = useState(false);
@@ -29,11 +29,15 @@ export default function MatchActions({ id, status, onChanged }: { id: string; st
     }
   };
 
-  const doExport = () =>
+  // Move to deal: a qualified deal in the CRM, next step in three days, and a link to Pipeline.
+  const toDeal = () =>
     run(async () => {
-      const json = await matchExport(id);
-      downloadJson(json, exportFilename(id));
-      return "Sent to CRM — the file has been downloaded.";
+      const d = await matchToDeal(id);
+      toast(`Moved to deals: ${d.deal}.`, true, {
+        ms: 9000,
+        actions: [{ label: "Open Pipeline", primary: true, run: () => { window.location.hash = "#/pipeline"; } }],
+      });
+      return "Moved to deals as Qualified, next step in three days.";
     });
 
   return (
@@ -59,8 +63,8 @@ export default function MatchActions({ id, status, onChanged }: { id: string; st
             Reopen
           </button>
         )}
-        <button className="btn primary" disabled={pending} onClick={doExport} title="Downloads a file for your CRM">
-          {status === "sent_to_crm" ? "Download again" : "Send to CRM"}
+        <button className="btn primary" disabled={pending} onClick={toDeal} title="Adds a qualified deal to the CRM with a next step in three days">
+          Move to deal
         </button>
       </div>
       {rejecting && (
