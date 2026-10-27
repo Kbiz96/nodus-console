@@ -1280,6 +1280,7 @@ a.lead-hook:hover { color: var(--mint); }
 .home-grid > section, .home-side > section { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; scroll-margin-top: calc(var(--strip) + 16px); }
 .home-side { display: contents; }
 .home-focus { order: 1; }
+.home-questions { order: 2; }
 .home-replies { order: 2; }
 .home-approve { order: 3; }
 .home-li { order: 4; }
@@ -1442,3 +1443,8 @@ details.deck-why p { margin: 0.45rem 0 0; color: var(--ink-2); font-size: 14px; 
 .find-what p { margin: 0 0 0.15rem; }
 .find-what .badge { margin-left: 0.4rem; }
 .find-acts { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.find-rails { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.find-what .find-rails .badge { margin-left: 0; }
+.question-row { align-items: stretch; }
+.question-answer { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; flex: 1 1 100%; }
+.question-answer textarea { flex: 1 1 14rem; min-width: 0; resize: vertical; }

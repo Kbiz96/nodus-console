@@ -9,7 +9,7 @@ import { AskClaude } from "../components/PriorityCard.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { toast } from "../components/Toast.tsx";
 import { ApolloNote } from "../components/Deck.tsx";
-import { apolloEnrich, apolloFailText, apolloFind, draftPrompt, type ApolloFail, type FindOk, type FindPerson } from "../lib/apollo.ts";
+import { KIND_LABEL, apolloEnrich, apolloFailText, apolloFind, apolloOpportunity, draftPrompt, type ApolloFail, type FindOk, type FindPerson, type OpportunityOk } from "../lib/apollo.ts";
 import { Empty, ErrorBox, Loading, PageHead, useTitle } from "../components/ui.tsx";
 
 const QUICK = [
@@ -57,7 +57,8 @@ export function workPrompt(r: BoardRow): string {
 /**
  * Engine → Board: the Heaven and Strong matches from match_board, Heaven first. Each card says need ↔ supply
  * (+ financing), why, the pair type and the mandate code, with "Work this match" (one Claude chat) and "Not a fit".
- * A Find bar on top queues a plain-English search for the next engine run, or runs it now with Claude.
+ * On top: "New opportunity" (a sentence becomes a mandate card, then Find runs on it) and the Find bar (runs at once
+ * through the nodus-apollo function: engine matches first, then Apollo people qualified against the mandate's rails).
  */
 export default function Board() {
   useTitle("Board");
@@ -103,6 +104,7 @@ export default function Board() {
         The best pairings the engine has found: Heaven first, then Strong. Work one with Claude, or mark it not a fit.
       </PageHead>
 
+      <NewOpportunity />
       <FindBar />
 
       {error && !data ? (
@@ -188,6 +190,62 @@ function BoardCard({ r, onNotFit }: { r: BoardRow; onNotFit: () => void }) {
   );
 }
 
+function NewOpportunity() {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [res, setRes] = useState<{ text: string; data: OpportunityOk } | null>(null);
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    const t = text.trim();
+    if (t.length < 8 || busy) return;
+    setBusy(true);
+    setErr(null);
+    setRes(null);
+    const r = await apolloOpportunity(t);
+    setBusy(false);
+    if (!r.ok) { setErr(apolloFailText(r).text); return; }
+    setRes({ text: t, data: r });
+    setText("");
+    toast(`Added ${r.created.label} to Mandates.`);
+  };
+  const c = res?.data.created;
+  return (
+    <section className="card board-find board-opp" aria-label="New opportunity">
+      <form className="board-find-form" onSubmit={(e) => void submit(e)}>
+        <label className="field grow">
+          <span>New opportunity</span>
+          <input value={text} onChange={(e) => setText(e.target.value)} maxLength={600}
+            placeholder="In a sentence, e.g. Family office with $2bn AUM looking to invest $20m tickets in UK data centres" aria-label="Describe a new opportunity" />
+        </label>
+        <button className="btn primary" type="submit" disabled={busy || text.trim().length < 8}>{busy ? "Adding…" : "Add and find"}</button>
+      </form>
+      <p className="muted small">Becomes a mandate card (code only, no names), then Find runs on it. Edit the card under Mandates.</p>
+      {err && <p className="error small" role="alert">{err}</p>}
+      {c && (
+        <div className="find-results" aria-live="polite">
+          <p className="ok small">
+            Added <strong>{c.label}</strong>: {KIND_LABEL[c.kind] ?? c.kind}{criteriaText(c.criteria) ? `, ${criteriaText(c.criteria)}` : ""}.
+          </p>
+          {res.data.find.ok ? <FindResults query={res.text} r={res.data.find} /> : <ApolloNote fail={res.data.find} />}
+        </div>
+      )}
+    </section>
+  );
+}
+
+/** "$100m-300m tickets, 10-70 MW, SA AE" from parsed criteria; empty when nothing was parsed. */
+export function criteriaText(c: Record<string, unknown>): string {
+  const usd = (n: unknown) => { const v = Number(n); return v >= 1e9 ? `$${+(v / 1e9).toFixed(1)}bn` : `$${Math.round(v / 1e6)}m`; };
+  const bits: string[] = [];
+  if (c.min_ticket_usd) bits.push(`${usd(c.min_ticket_usd)}${c.max_ticket_usd ? `-${usd(c.max_ticket_usd).slice(1)}` : "+"} tickets`);
+  if (c.fund_min_usd) bits.push(`fund ${usd(c.fund_min_usd)}+`);
+  if (c.offtake_mw_min) bits.push(`${c.offtake_mw_min}${c.offtake_mw_max ? `-${c.offtake_mw_max}` : "+"} MW`);
+  else if (c.mw_min) bits.push(`${c.mw_min} MW+`);
+  if (Array.isArray(c.region_pref) && c.region_pref.length) bits.push(c.region_pref.join(" "));
+  return bits.join(", ");
+}
+
 function FindBar() {
   const [q, setQ] = useState("");
   const [busy, setBusy] = useState(false);
@@ -261,6 +319,7 @@ function FindBar() {
 
 function FindResults({ query, r }: { query: string; r: FindOk }) {
   const about = r.mandate ? `${r.mandate.label} (${query})` : query;
+  const approach = r.mandate?.approach ?? null;
   return (
     <div className="find-results" aria-live="polite">
       <p className="small muted">
@@ -289,7 +348,7 @@ function FindResults({ query, r }: { query: string; r: FindOk }) {
         <>
           <h3 className="find-h">People from Apollo</h3>
           <ul className="find-list">
-            {r.people.map((p) => <PersonRow key={p.apollo_id} p={p} about={about} />)}
+            {r.people.map((p) => <PersonRow key={p.apollo_id} p={p} about={about} approach={approach} />)}
           </ul>
         </>
       )}
@@ -297,7 +356,7 @@ function FindResults({ query, r }: { query: string; r: FindOk }) {
   );
 }
 
-function PersonRow({ p, about }: { p: FindPerson; about: string }) {
+function PersonRow({ p, about, approach }: { p: FindPerson; about: string; approach: string | null }) {
   const [email, setEmail] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState<ApolloFail | null>(null);
@@ -313,9 +372,16 @@ function PersonRow({ p, about }: { p: FindPerson; about: string }) {
   return (
     <li className="find-row">
       <div className="find-what">
-        <p><strong>{p.name || "Unnamed"}</strong>{p.title && <span className="muted">, {p.title}</span>}{p.company && <> at {p.company}</>}{p.known && <span className="badge">Already known</span>}</p>
-        <p className="muted small">{p.why}</p>
-        <p className="small">{p.size_evidence ? <>Size: {p.size_evidence}</> : <span className="muted">Size: no evidence in Apollo</span>}</p>
+        <p>
+          {typeof p.fit_score === "number" && <span className={`pill ${p.fit_score >= 70 ? "pill-good" : "pill-wait"}`} title="Fit against the mandate's rails">Fit {p.fit_score}</span>}{" "}
+          <strong>{p.name || "Unnamed"}</strong>{p.title && <span className="muted">, {p.title}</span>}{p.company && <> at {p.company}</>}{p.known && <span className="badge">Already known</span>}
+        </p>
+        {p.rails && p.rails.length > 0 ? (
+          <p className="find-rails small">{p.rails.map((x) => <span key={x} className="badge">{x}</span>)}</p>
+        ) : (
+          <p className="muted small">No rail confirmed by Apollo data: check before drafting.</p>
+        )}
+        <p className="small">{p.size_evidence ? <>Size: {p.size_evidence}</> : <span className="muted">Size: unverified</span>}</p>
         {email && <p className="mono small">{email}</p>}
         {fail && <ApolloNote fail={fail} />}
       </div>
@@ -325,7 +391,7 @@ function PersonRow({ p, about }: { p: FindPerson; about: string }) {
             {busy ? "Enriching…" : "Enrich email (1 credit)"}
           </button>
         )}
-        <AskClaude className="btn small primary" prompt={draftPrompt(p, email, about)}><Icon.claude />Draft</AskClaude>
+        <AskClaude className="btn small primary" prompt={draftPrompt(p, email, about, approach)}><Icon.claude />Draft</AskClaude>
       </div>
     </li>
   );

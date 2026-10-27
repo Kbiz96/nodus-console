@@ -11,14 +11,21 @@ export interface SendOk { ok: true; contact_id: string; sequence: ApolloSequence
 export interface FindPerson {
   apollo_id: string; name: string; title: string | null; company: string | null; domain: string | null; linkedin: string | null;
   country: string | null; has_email: boolean | null; size_evidence: string | null; why: string; known: boolean; lead_candidate_id: string | null;
+  /** Which of the mandate's rails this result meets, e.g. "title: CIO", "region: Saudi Arabia", "type: family office". */
+  rails?: string[];
+  /** 0-100 against the rails (40 base; title 20, region 15, type 15, size proxy 10). */
+  fit_score?: number;
 }
 export interface FindEngineRow {
   match_id: string; tier: string | null; score: number | string | null; pair_type: string | null; why: string | null; mandate_code: string | null;
   need_side: { name?: string | null; what?: string | null } | null; supply_side: { name?: string | null; what?: string | null } | null;
 }
 export interface FindOk {
-  ok: true; mandate: { id: string; label: string } | null; engine: FindEngineRow[]; people: FindPerson[]; added: number;
-  note: string | null; apollo_skipped?: string; message?: string; parsed?: Record<string, unknown>;
+  ok: true; mandate: { id: string; label: string; approach?: string | null } | null; engine: FindEngineRow[]; people: FindPerson[]; added: number;
+  note: string | null; apollo_skipped?: string; message?: string; parsed?: Record<string, unknown>; excluded?: number; skipped?: number;
+}
+export interface OpportunityOk {
+  ok: true; created: { id: string; label: string; kind: string; line: string; criteria: Record<string, unknown> }; find: FindOk | ApolloFail;
 }
 export interface EnrichOk { ok: true; email: string; email_status: string | null; contact_id: string; credits: number }
 
@@ -41,6 +48,9 @@ export async function callApollo<T>(body: Record<string, unknown>): Promise<T | 
 export const apolloSend = (outreachId: string) => callApollo<SendOk>({ action: "send", outreach_id: outreachId });
 export const apolloFind = (query: string, mandateId?: string | null) => callApollo<FindOk>({ action: "find", query, ...(mandateId ? { mandate_id: mandateId } : {}) });
 export const apolloEnrich = (leadId: string) => callApollo<EnrichOk>({ action: "enrich", lead_candidate_id: leadId });
+export const apolloOpportunity = (text: string) => callApollo<OpportunityOk>({ action: "opportunity", text });
+
+export const KIND_LABEL: Record<string, string> = { site: "Site", capital_ask: "Capital ask", need: "Need", investor_mandate: "Investor mandate" };
 
 export function sequenceUrl(id: string): string {
   return `https://app.apollo.io/#/sequences/${id}`;
@@ -68,15 +78,21 @@ export function apolloFailText(r: ApolloFail): { text: string; link?: { href: st
   }
 }
 
-/** The Claude hand-off behind "Draft" on a Find result: one first touch into the Approve deck, follow-ups in the note. */
-export function draftPrompt(p: Pick<FindPerson, "name" | "title" | "company" | "lead_candidate_id" | "size_evidence" | "why">, email: string | null, about: string): string {
+/** The Claude hand-off behind "Draft" on a Find result: research, one first touch per the mandate's approach, saved as a draft. */
+export function draftPrompt(
+  p: Pick<FindPerson, "name" | "title" | "company" | "lead_candidate_id" | "size_evidence" | "why"> & { rails?: string[] },
+  email: string | null,
+  about: string,
+  approach?: string | null,
+): string {
   const who = [p.name, p.title, p.company].filter(Boolean).join(", ");
   return (
-    `Nodus command: draft a first-touch email per OUTBOUND-PROMPT v3 to ${who}` +
+    `Nodus command: draft a first-touch email to ${who}` +
     `${p.lead_candidate_id ? ` (lead_candidates id ${p.lead_candidate_id})` : ""}${email ? `, ${email}` : ""}, for: ${about}. ` +
     `Why them: ${p.why}${p.size_evidence ? `; size evidence: ${p.size_evidence}` : "; size not evidenced, check it first"}. ` +
-    "Check the CRM and outreach history first. Capital: relationship-first with the mandate range and a light close; power and compute: direct; procurement: RFQ. " +
-    "No names across sides before Protected; never mention fees. Save it to outreach as a draft (channel email, to_email set, linked contact) " +
+    "First research the person and their firm (recent deals, stated mandate, size) and check the CRM and outreach history. " +
+    `Then write it per OUTBOUND-PROMPT v3 using this mandate's icp.approach: ${approach?.trim() || "see the mandate card (capital: relationship-first with the mandate range and a light close; power and compute: direct; procurement: RFQ)"}. ` +
+    "No names across sides before Protected; never mention fees. Insert it into outreach as a draft (channel email, to_email set, linked contact) " +
     "so it appears in the console Approve deck, and put two short follow-ups in the note as \"FU1: ...\" and \"FU2: ...\". Do not send."
   );
 }
