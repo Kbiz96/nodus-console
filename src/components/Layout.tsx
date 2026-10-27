@@ -6,6 +6,7 @@ import { Icon, Logo, type IconName } from "./Brand.tsx";
 import { Toaster } from "./Toast.tsx";
 import { calmPref, remember, setCalmPref } from "../lib/calm.ts";
 import { engineTabOf } from "./EngineTabs.tsx";
+import { BUILD_TIME, buildLabel, useNewVersion } from "../lib/version.ts";
 
 interface Item { to: string; label: string; icon: IconName; end?: boolean }
 
@@ -62,6 +63,7 @@ function useCalm(path: string): [boolean, () => void] {
 export default function Layout({ email, onSignOut, children }: { email: string | null; onSignOut: () => void; children: ReactNode }) {
   const location = useLocation();
   const status = useStatus(location.pathname);
+  const newer = useNewVersion();
   const [calm, toggleCalm] = useCalm(location.pathname);
   const [palette, setPalette] = useState(false);
   const [sheet, setSheet] = useState(false);
@@ -145,11 +147,17 @@ export default function Layout({ email, onSignOut, children }: { email: string |
 
       <div className="main-col">
         <StatusStrip s={status} calm={calm} onCalm={toggleCalm} />
+        {newer && (
+          <div className="newver" role="status">
+            <span>New version available.</span>
+            <button type="button" className="btn small primary" onClick={() => window.location.reload()}>Reload</button>
+          </div>
+        )}
         <main className={bleed ? "container bleed" : "container"} key={location.pathname}>{children}</main>
         {!bleed && (
           <footer className="footer">
             <span>Nodus Partners. Private. Nothing is sent without your approval.</span>
-            <span>UK time</span>
+            <span>UK time · <span className="mono build-stamp" title={BUILD_TIME}>{buildLabel()}</span></span>
           </footer>
         )}
       </div>

@@ -1448,3 +1448,8 @@ details.deck-why p { margin: 0.45rem 0 0; color: var(--ink-2); font-size: 14px; 
 .question-row { align-items: stretch; }
 .question-answer { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: flex-end; flex: 1 1 100%; }
 .question-answer textarea { flex: 1 1 14rem; min-width: 0; resize: vertical; }
+
+/* ---------- new version banner ---------- */
+.newver { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 8px 16px; background: var(--teal-soft); border-bottom: 1px solid var(--line); color: var(--ink); font-size: 14px; }
+.build-stamp { opacity: 0.75; font-size: 12px; }
+.pager { align-items: center; justify-content: flex-start; gap: 12px; }
