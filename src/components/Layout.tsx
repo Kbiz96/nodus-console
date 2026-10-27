@@ -34,6 +34,7 @@ const MORE: { name: string; items: Item[] }[] = [
     name: "Data",
     items: [
       { to: "/today", label: "Engine report", icon: "today" },
+      { to: "/today?learn=1", label: "Learning library", icon: "today" },
       { to: "/signals", label: "Signals", icon: "signals" },
       { to: "/sources", label: "Sources", icon: "sources" },
       { to: "/spend", label: "Spend", icon: "spend" },

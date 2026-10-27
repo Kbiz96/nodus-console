@@ -25,6 +25,16 @@ fx.tables.bd_queue = bdQueue();
 // One open question for Kuran on Today (crm_actions, category 'question'), tied to a deal.
 fx.tables.crm_actions = [...(fx.tables.crm_actions ?? []), { id: "9a9a9a9a-0000-4000-8000-000000000001", title: "Which ticket range should the Gulf teaser quote?", detail: "Two investors asked; the card says $100-300m.", category: "question", status: "open", deal_id: "dddddddd-1111-4000-8000-000000000001", contact_id: null, priority: null, due: null, link: null, focus_rank: null, source: "claude", created_at: "2026-10-27T08:00:00Z", updated_at: "2026-10-27T08:00:00Z" }];
 fx.bdOpps = bdOpps();
+// Learning library (synthetic): one dated lesson with HTML that must be sanitised, and one course module.
+fx.tables.learning_lessons = [
+  { id: "2026-10-01-am", lesson_date: "2026-10-01", slot: "am", pillar: "A", module: "A1 Example", title: "Example lesson on the cost of a MW", summary: "Synthetic summary.", kind: "lesson",
+    data: { sections: [{ h: "Numbers to memorise", body: '<div class="plate"><span class="pt">Plate</span>About <b>$10m</b> per MW</div><img src=x onerror="window.__xss=1"><script>window.__xss=1</script>' }],
+      nodus: { line: "Example line", ask: "Example ask", redflag: "Example flag", signal: "Example signal" },
+      quiz: [{ q: "Example question?", o: ["One", "Two"], a: 1, why: "Because two." }],
+      drill: { kind: "Call", prompt: "<p>Say it.</p>", model: "<p>Model answer text</p>" }, sources: [{ t: "Example source", u: "https://example.com" }] } },
+  { id: "course-c1", lesson_date: null, slot: null, pillar: "A", module: "Course · Example", title: "Example course module", summary: "Synthetic.", kind: "course",
+    data: { lessons: [{ t: "Part one", h: "<p>Body</p>" }], exam: [] } },
+];
 // The front page's full screenshots (desktop and phone) can go to their own folder.
 const frontShots = process.env.FRONT_SHOTS || process.env.FOCUS_SHOTS || process.argv[2] || process.env.SHOTS_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.smoke");
 // New-leads screenshots (Focus with the New leads tab) can go to their own folder.
@@ -832,6 +842,17 @@ try {
   check(await page.getByText("Chase the NCNDA").isVisible(), "the Daily report lists actions to do first");
   check(await page.getByRole("link", { name: "Example 20 MW gensets" }).isVisible(), "the Daily report lists deals due");
   await page.screenshot({ path: path.join(shots, "console-today-crm.png"), fullPage: false });
+  await page.getByRole("heading", { name: "Learning library" }).scrollIntoViewIfNeeded();
+  await page.getByRole("button", { name: /Example lesson on the cost of a MW/ }).click();
+  await page.getByText("Numbers to memorise").waitFor();
+  check(await page.evaluate(() => !window.__xss && document.querySelectorAll(".lib-lesson script, .lib-lesson img").length === 0), "the learning library sanitises lesson HTML");
+  check(!(await page.getByText("Model answer text").isVisible()), "the drill's model answer is hidden until asked");
+  await page.getByRole("button", { name: "Show model answer" }).click();
+  check(await page.getByText("Model answer text").isVisible(), "Show model answer reveals it");
+  await page.getByRole("button", { name: /One$/ }).click();
+  check(await page.getByText("Because two.").isVisible(), "the self-check shows the answer and why after a pick");
+  check(await page.locator(".lib-lesson").getByText(/timer|countdown|score/i).count() === 0, "the library has no timer or score");
+  await page.getByRole("button", { name: "← All lessons" }).click();
   await page.getByRole("checkbox", { name: /Chase the NCNDA/ }).click();
   await page.waitForTimeout(300);
   check(writes.some((w) => w.table === "crm_actions" && w.body.status === "done"), "ticking an action marks it done");
