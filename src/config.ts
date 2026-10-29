@@ -7,8 +7,8 @@
 //
 // Never put a secret key (sb_secret_… or the old service_role key) or a database password here.
 
-export const SUPABASE_URL = "https://wryvidauwmcczbmstsla.supabase.co";
-export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_owO7VMpQG1o5cFoYzD7FYA_bamtSt0U";
+export const SUPABASE_URL = "https://tfsioiuvmyuqgajxtklv.supabase.co";
+export const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_STvhewlTeiO8QzIStdtQ2g_RXckFAje";
 
 // Enrichment credit caps (Apollo, Clay and Vibe Prospecting together). These mirror the `enrichment:`
 // section of config/engine.yaml in the engine repository, which is what actually enforces them; the

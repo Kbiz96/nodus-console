@@ -380,8 +380,8 @@ async function engineTabsFlow(page, label, at) {
 async function focusFlow(browser, label, viewport) {
   const ctx = await browser.newContext({ viewport, deviceScaleFactor: 1, locale: "en-GB", timezoneId: "Europe/London" });
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await ctx.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true));
-  await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
+  await ctx.route("https://tfsioiuvmyuqgajxtklv.supabase.co/**", fake(true));
+  await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://tfsioiuvmyuqgajxtklv.supabase.co"), (r) => r.abort());
   await ctx.addInitScript((s) => localStorage.setItem("nodus-console-auth", JSON.stringify(s)), session);
   const page = await ctx.newPage();
   const errors = [];
@@ -722,8 +722,8 @@ try {
   // ---------- approved user, phone width ----------
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, acceptDownloads: true, locale: "en-GB", timezoneId: "Europe/London" });
   await ctx.grantPermissions(["clipboard-read", "clipboard-write"]);
-  await ctx.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true));
-  await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
+  await ctx.route("https://tfsioiuvmyuqgajxtklv.supabase.co/**", fake(true));
+  await ctx.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://tfsioiuvmyuqgajxtklv.supabase.co"), (r) => r.abort());
   const page = await ctx.newPage();
   const errors = [];
   page.on("pageerror", (e) => errors.push(String(e)));
@@ -940,7 +940,7 @@ try {
 
   // ---------- signed in but not approved ----------
   const ctx2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
-  await ctx2.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(false));
+  await ctx2.route("https://tfsioiuvmyuqgajxtklv.supabase.co/**", fake(false));
   const p2 = await ctx2.newPage();
   await p2.goto(base);
   await p2.getByLabel("Email").fill("someone@example.com");
@@ -954,8 +954,8 @@ try {
   {
     const nb = { ...fx, tables: { ...fx.tables, daily_briefs: [] } };
     const ctx3 = await browser.newContext({ viewport: { width: 390, height: 844 }, locale: "en-GB", timezoneId: "Europe/London" });
-    await ctx3.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true, nb));
-    await ctx3.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
+    await ctx3.route("https://tfsioiuvmyuqgajxtklv.supabase.co/**", fake(true, nb));
+    await ctx3.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://tfsioiuvmyuqgajxtklv.supabase.co"), (r) => r.abort());
     await ctx3.addInitScript((s) => localStorage.setItem("nodus-console-auth", JSON.stringify(s)), session);
     const p3 = await ctx3.newPage();
     await p3.goto(base);
@@ -1008,8 +1008,8 @@ try {
   const passes = [["desktop", { width: 1440, height: 900 }], ["phone", { width: 390, height: 844 }]].filter(([n]) => !process.env.SMOKE_PASS || process.env.SMOKE_PASS === n);
   for (const [name, viewport] of passes) {
     const c = await browser.newContext({ viewport, deviceScaleFactor: 2, locale: "en-GB", timezoneId: "Europe/London" });
-    await c.route("https://wryvidauwmcczbmstsla.supabase.co/**", fake(true, big));
-    await c.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://wryvidauwmcczbmstsla.supabase.co"), (r) => r.abort());
+    await c.route("https://tfsioiuvmyuqgajxtklv.supabase.co/**", fake(true, big));
+    await c.route((u) => !u.href.startsWith(base) && !u.href.startsWith("https://tfsioiuvmyuqgajxtklv.supabase.co"), (r) => r.abort());
     await c.addInitScript((s) => localStorage.setItem("nodus-console-auth", JSON.stringify(s)), session);
     const p = await c.newPage();
     const errs = [];

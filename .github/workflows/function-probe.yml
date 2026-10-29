@@ -15,7 +15,7 @@ jobs:
       - name: Unauthenticated call must be refused
         run: |
           code=$(curl -s -o /tmp/body -w '%{http_code}' -X POST \
-            https://wryvidauwmcczbmstsla.supabase.co/functions/v1/nodus-apollo \
+            https://tfsioiuvmyuqgajxtklv.supabase.co/functions/v1/nodus-apollo \
             -H 'content-type: application/json' -d '{"action":"find","query":"probe"}')
           echo "status $code"; cat /tmp/body; echo
           test "$code" = "401"
