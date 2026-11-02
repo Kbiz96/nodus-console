@@ -39,8 +39,9 @@ export function LinkedInPanel() {
   const contactOf = (o: Outreach) => (o.contact_id ? data?.contacts.get(o.contact_id) ?? null : null);
   const profileOf = (o: Outreach) => safeHref(o.link) ?? safeHref(contactOf(o)?.linkedin);
 
-  if (error && !data) return <p className="muted small">LinkedIn messages could not be loaded. <button type="button" className="link-btn" onClick={reload}>Try again</button></p>;
-  if (!data) return <p className="muted small">Checking LinkedIn…</p>;
+  // The agent button never depends on the drafts loading: Kuran must always be able to start a run.
+  if (error && !data) return <div className="li-panel"><AgentBar lane={lane} setLane={setLane} counts={laneCounts([])} /><p className="muted small">LinkedIn drafts could not be loaded. <button type="button" className="link-btn" onClick={reload}>Try again</button></p></div>;
+  if (!data) return <div className="li-panel"><AgentBar lane={lane} setLane={setLane} counts={laneCounts([])} /><p className="muted small">Checking LinkedIn…</p></div>;
 
   return (
     <div className="li-panel">
