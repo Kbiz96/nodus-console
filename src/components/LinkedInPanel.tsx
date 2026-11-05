@@ -161,32 +161,34 @@ function NoteRow({ o, contact, profile, onDone }: { o: Outreach; contact: LiCont
 
 // ---------- LinkedIn agent (on demand) ----------
 
-type Lane = "ALL" | "CAPITAL" | "COMPUTE" | "OPERATORS";
+type Lane = "ALL" | "CAPITAL" | "OFFTAKERS" | "COMPUTE" | "OPERATORS";
 const LANES: { k: Lane; label: string }[] = [
   { k: "ALL", label: "What we need now" },
   { k: "CAPITAL", label: "Capital" },
+  { k: "OFFTAKERS", label: "Offtakers" },
   { k: "COMPUTE", label: "Compute" },
   { k: "OPERATORS", label: "Operators" },
 ];
 
 /** Drafts written by the LinkedIn agent start their note with "LI: <LANE> · ...". */
 export function laneOf(o: Pick<Outreach, "note">): Lane | null {
-  const m = /^LI:\s*(CAPITAL|COMPUTE|OPERATORS)\b/.exec((o.note ?? "").trim());
-  return m ? (m[1] as Lane) : null;
+  const m = /^LI:\s*(CAPITAL|OFFTAKERS?|COMPUTE|OPERATORS)\b/.exec((o.note ?? "").trim());
+  if (!m) return null;
+  return (m[1].startsWith("OFFTAKER") ? "OFFTAKERS" : m[1]) as Lane;
 }
 
 function laneCounts(rows: Outreach[]): Record<Lane, number> {
-  const c: Record<Lane, number> = { ALL: rows.length, CAPITAL: 0, COMPUTE: 0, OPERATORS: 0 };
+  const c: Record<Lane, number> = { ALL: rows.length, CAPITAL: 0, OFFTAKERS: 0, COMPUTE: 0, OPERATORS: 0 };
   for (const r of rows) { const l = laneOf(r); if (l) c[l] += 1; }
   return c;
 }
 
 export function agentPrompt(lane: Lane): string {
-  const lanes = lane === "ALL" ? "whatever the live mandates and priorities need most (capital, compute and operators)" : lane.toLowerCase();
+  const lanes = lane === "ALL" ? "whatever the live mandates and priorities need most (capital, offtakers, compute, operators)" : lane.toLowerCase();
   return [
     `Nodus LinkedIn agent: run the nodus-linkedin-agent skill now in my Chrome (Claude in Chrome extension). Lane: ${lanes}.`,
-    "Find leads among my existing 1st-degree connections and new people, qualify them against the live mandates, and write DM drafts (connected) or connection notes (not connected) into the console.",
-    "Also find 25 recent posts worth commenting on (my lanes, last 7 days) and draft a comment for each.",
+    "DMs go to my 1st-degree connections only (newest connections first), each checked against my whole LinkedIn inbox and the console so nobody I've already messaged gets one. People I'm not connected to get a connection note only.",
+    "Also find 25 recent posts worth commenting on (my lanes, last 7 days) and draft a comment for each, with the post's opening words so I can find it.",
     "Read-only and human-paced: never click Connect, Message, Like, Comment or Send; at least 15 s between pages, 40 pages max. I send everything myself.",
   ].join("\n");
 }
