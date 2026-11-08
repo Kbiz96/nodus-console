@@ -44,6 +44,12 @@ export function ukMonthStart(now = new Date()): string {
   return `${p.year}-${p.month.padStart(2, "0")}-01`;
 }
 
+/** Today's date in UK time, as "YYYY-MM-DD". */
+export function ukToday(now = new Date()): string {
+  const p = ukParts(now);
+  return `${p.year}-${p.month.padStart(2, "0")}-${p.day.padStart(2, "0")}`;
+}
+
 /** Minutes that UK time is ahead of UTC at a given instant (0 in winter, 60 in summer). */
 function ukOffsetMinutes(at: Date): number {
   const p = ukParts(at);

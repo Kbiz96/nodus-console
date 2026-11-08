@@ -12,11 +12,12 @@ import { cached, peek } from "../lib/cache.ts";
 
 interface Item { to: string; label: string; icon: IconName; end?: boolean }
 
-/** The three screens that run Kuran's day. Everything else sits under More. */
+/** The screens that run Kuran's day. Everything else sits under More. */
 const PRIMARY: Item[] = [
   { to: "/", label: "Today", icon: "focus", end: true },
   { to: "/pipeline", label: "Pipeline", icon: "deals" },
   { to: "/board", label: "Engine", icon: "engine" },
+  { to: "/learn", label: "Learn", icon: "learn" },
 ];
 const MORE: { name: string; items: Item[] }[] = [
   {
@@ -34,7 +35,6 @@ const MORE: { name: string; items: Item[] }[] = [
     name: "Data",
     items: [
       { to: "/today", label: "Engine report", icon: "today" },
-      { to: "/today?learn=1", label: "Learning library", icon: "today" },
       { to: "/signals", label: "Signals", icon: "signals" },
       { to: "/sources", label: "Sources", icon: "sources" },
       { to: "/spend", label: "Spend", icon: "spend" },

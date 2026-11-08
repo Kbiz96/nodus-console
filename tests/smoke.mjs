@@ -35,6 +35,10 @@ fx.tables.learning_lessons = [
   { id: "course-c1", lesson_date: null, slot: null, pillar: "A", module: "Course · Example", title: "Example course module", summary: "Synthetic.", kind: "course",
     data: { lessons: [{ t: "Part one", h: "<p>Body</p>" }], exam: [] } },
 ];
+// Learn (#/learn): today's plan row points at the course module above (part 0) and a synthetic voice session.
+fx.tables.learning_lessons.push({ id: "voice-example", lesson_date: ukDay, slot: "voice", pillar: "E", module: "Operator voice · week 1", title: "Answer first", summary: "Put the answer in your first sentence.", kind: "lesson",
+  data: { sections: [{ h: "The idea", body: "<p>Answer, because, example, stop.</p>" }], drill: { kind: "Say it aloud", prompt: "<p>Record it.</p>", model: "<p>Voice model answer</p>" }, quiz: [] } });
+fx.tables.learning_days = [{ day: ukDay, theme: "Example theme", domain_ref: "course-c1", domain_part: 0, domain_title: "Part one", voice_ref: "voice-example", domain_done_at: null, voice_done_at: null, win: null, know: null, ask: null }];
 // The front page's full screenshots (desktop and phone) can go to their own folder.
 const frontShots = process.env.FRONT_SHOTS || process.env.FOCUS_SHOTS || process.argv[2] || process.env.SHOTS_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../.smoke");
 // New-leads screenshots (Focus with the New leads tab) can go to their own folder.
@@ -178,7 +182,12 @@ function fake(approved, data = fx) {
     }
     if (prioEq?.startsWith("in.(")) { const set = prioEq.slice(4, -1).split(",").map((x) => x.replace(/"/g, "")); rows = rows.filter((r) => set.includes(r.priority_id)); }
     if (req.method() === "DELETE") { writes.push({ table, method: "DELETE", url: u.search, body: {} }); return json(200, rows.slice(0, 1)); }
-    if (req.method() === "PATCH") { writes.push({ table, method: "PATCH", url: u.search, body: req.postDataJSON?.() ?? {} }); return json(200, rows.slice(0, 1)); }
+    if (req.method() === "PATCH") {
+      const body = req.postDataJSON?.() ?? {};
+      writes.push({ table, method: "PATCH", url: u.search, body });
+      // Learn reads the updated row back to show the tick; the other screens ignore the returned row.
+      return json(200, table === "learning_days" ? rows.slice(0, 1).map((r) => ({ ...r, ...body })) : rows.slice(0, 1));
+    }
     if (req.method() === "POST") {
       const body = req.postDataJSON?.() ?? {};
       writes.push({ table, method: "POST", url: u.search, body });
@@ -700,7 +709,7 @@ async function focusFlow(browser, label, viewport) {
   // Shell: three primary places, the rest under More
   const nav = label === "phone" ? page.locator(".mnav") : page.locator(".rail-primary");
   const names = (await nav.getByRole("link").allTextContents()).map((t) => t.replace(/\d+$/, "").trim());
-  check(JSON.stringify(names) === JSON.stringify(["Today", "Pipeline", "Engine"]), at(`primary nav is Today, Pipeline, Engine (got ${names.join(", ")})`));
+  check(JSON.stringify(names) === JSON.stringify(["Today", "Pipeline", "Engine", "Learn"]), at(`primary nav is Today, Pipeline, Engine, Learn (got ${names.join(", ")})`));
   check(await nav.getByRole("link", { name: /Review/ }).count() === 0, at("Review is not in the nav"));
   if (label === "phone") await page.getByRole("button", { name: "More" }).click();
   else await page.locator(".rail-more").click();
@@ -842,7 +851,30 @@ try {
   check(await page.getByText("Chase the NCNDA").isVisible(), "the Daily report lists actions to do first");
   check(await page.getByRole("link", { name: "Example 20 MW gensets" }).isVisible(), "the Daily report lists deals due");
   await page.screenshot({ path: path.join(shots, "console-today-crm.png"), fullPage: false });
-  await page.getByRole("heading", { name: "Learning library" }).scrollIntoViewIfNeeded();
+  await page.getByRole("checkbox", { name: /Chase the NCNDA/ }).click();
+  await page.waitForTimeout(300);
+  check(writes.some((w) => w.table === "crm_actions" && w.body.status === "done"), "ticking an action marks it done");
+
+  // ---------- Learn ----------
+  await page.goto(`${base}#/today?learn=1`);
+  await page.getByRole("heading", { name: "Learn", exact: true }).waitFor();
+  check(page.url().endsWith("#/learn"), "the old library link opens Learn");
+  check(await page.getByRole("heading", { name: "Today", exact: true }).isVisible(), "Learn opens on today's plan");
+  const wLearn = writes.length;
+  await page.locator(".learn-card").first().getByRole("button", { name: "Open" }).click();
+  await page.getByText("Body").first().waitFor();
+  check(await page.locator(".learn-card").first().locator(".lib-sec h4").count() === 1, "the business block shows one lesson of the module");
+  await page.locator(".learn-card").first().getByRole("button", { name: "Mark done" }).first().click();
+  await page.getByRole("button", { name: /Done ✓/ }).first().waitFor();
+  check(writes.slice(wLearn).some((w) => w.table === "learning_days" && w.method === "PATCH" && w.body.domain_done_at && w.url.includes(ukDay)), "Mark done ticks the business block");
+  const practise = await page.getByRole("link", { name: "Practise with Claude" }).getAttribute("href");
+  check(Boolean(practise?.startsWith("https://claude.ai/new?q=") && decodeURIComponent(practise).includes("Answer first")), "Practise with Claude opens a chat about today's session");
+  await page.getByLabel("A win").fill("Booked the Thursday call");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByText("Saved.").first().waitFor();
+  check(writes.slice(wLearn).some((w) => w.table === "learning_days" && w.body.win === "Booked the Thursday call"), "the confidence log saves");
+  await page.screenshot({ path: path.join(shots, "console-learn.png"), fullPage: true });
+  await page.getByText("All lessons and modules").click();
   await page.getByRole("button", { name: /Example lesson on the cost of a MW/ }).click();
   await page.getByText("Numbers to memorise").waitFor();
   check(await page.evaluate(() => !window.__xss && document.querySelectorAll(".lib-lesson script, .lib-lesson img").length === 0), "the learning library sanitises lesson HTML");
@@ -853,9 +885,6 @@ try {
   check(await page.getByText("Because two.").isVisible(), "the self-check shows the answer and why after a pick");
   check(await page.locator(".lib-lesson").getByText(/timer|countdown|score/i).count() === 0, "the library has no timer or score");
   await page.getByRole("button", { name: "← All lessons" }).click();
-  await page.getByRole("checkbox", { name: /Chase the NCNDA/ }).click();
-  await page.waitForTimeout(300);
-  check(writes.some((w) => w.table === "crm_actions" && w.body.status === "done"), "ticking an action marks it done");
 
   await page.goto(`${base}#/contacts`);
   await page.getByRole("heading", { name: "Contacts", exact: true }).waitFor();

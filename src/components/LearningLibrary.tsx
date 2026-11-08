@@ -62,7 +62,7 @@ export default function LearningLibrary() {
             <ul className="lib-list">
               {g.rows.map((r) => (
                 <li key={r.id}>
-                  <button type="button" className="lib-item" onClick={() => { setOpen(r); window.scrollTo({ top: document.getElementById("learning")?.offsetTop ?? 0 }); }}>
+                  <button type="button" className="lib-item" onClick={() => { setOpen(r); document.getElementById("learning")?.scrollIntoView({ block: "start" }); }}>
                     <span className="lib-item-meta">
                       {r.lesson_date ? `${fmtDay(r.lesson_date)}${r.slot ? ` · ${r.slot === "am" ? "Morning" : r.slot === "pm" ? "Evening" : r.slot}` : ""}` : KIND_LABEL[r.kind] ?? r.kind}
                       {sort === "newest" && r.pillar ? ` · ${pillarLabel(r.pillar)}` : ""}
@@ -79,6 +79,22 @@ export default function LearningLibrary() {
       )}
     </div>
   );
+}
+
+/** Loads a lesson by id and shows it (or one part of a course module) with no header. */
+export function LessonById({ id, kind, part }: { id: string; kind: string; part?: number | null }) {
+  const [data, setData] = useState<LearningData | null>(null);
+  const [error, setError] = useState<unknown>(null);
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    setError(null);
+    learningData(id).then((d) => { if (live) setData(d); }, (e) => { if (live) setError(e); });
+    return () => { live = false; };
+  }, [id, tick]);
+  if (error) return <ErrorBox error={error} onRetry={() => setTick((t) => t + 1)} />;
+  if (!data) return <Loading what="Opening the lesson…" />;
+  return <div className="lib-lesson"><LessonBody row={{ kind }} d={data} part={part} /></div>;
 }
 
 function LessonView({ row, onBack }: { row: LearningRow; onBack: () => void }) {
@@ -105,8 +121,26 @@ function LessonView({ row, onBack }: { row: LearningRow; onBack: () => void }) {
   );
 }
 
-function LessonBody({ row, d }: { row: LearningRow; d: LearningData }) {
+/**
+ * One lesson's content. For a course module, `part` picks a single lesson (its index), -1 shows only the
+ * self-check questions, and null/undefined shows the whole module.
+ */
+export function LessonBody({ row, d, part }: { row: Pick<LearningRow, "kind">; d: LearningData; part?: number | null }) {
   if (row.kind === "doc") return <Html html={markdownToHtml(d.markdown ?? "")} />;
+  if (row.kind === "course" && part != null) {
+    if (part < 0) {
+      const qs = [...(d.exam ?? []), ...(d.quiz ?? [])];
+      return qs.length ? <SelfCheck title="Self-check" qs={qs} /> : <p className="muted small">This module has no self-check questions.</p>;
+    }
+    const l = (d.lessons ?? [])[part];
+    if (!l) return <p className="muted small">That lesson isn’t in the module any more. Open the full module from the library.</p>;
+    return (
+      <section className="lib-sec">
+        <h4>{l.t}</h4>
+        <Html html={l.h} />
+      </section>
+    );
+  }
   return (
     <>
       {d.story?.headline && (

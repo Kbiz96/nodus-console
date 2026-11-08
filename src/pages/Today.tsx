@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase, must, mustCount } from "../lib/supabase.ts";
 import { MATCH_CARD_COLS, activeMandateFilter, inactiveMandateIds } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
@@ -11,7 +11,6 @@ import TodayCrm from "../components/TodayCrm.tsx";
 import Scoreboard from "../components/Scoreboard.tsx";
 import { Confidence, CountUp, Empty, ErrorBox, ExtLink, LineBadge, Loading, useTitle } from "../components/ui.tsx";
 import { CLOSED_STAGES, DEAL_STAGES } from "../lib/crm.ts";
-import LearningLibrary from "../components/LearningLibrary.tsx";
 
 interface Blocked {
   id: number;
@@ -87,9 +86,11 @@ export default function Today() {
   useTitle("Daily report");
   const { search } = useLocation();
   const learn = new URLSearchParams(search).get("learn") === "1";
+  const navigate = useNavigate();
+  // The library moved to Learn (8 Nov 2026); old links still land there.
   useEffect(() => {
-    if (learn) document.getElementById("learning")?.scrollIntoView({ block: "start" });
-  }, [learn]);
+    if (learn) navigate("/learn", { replace: true });
+  }, [learn, navigate]);
   return (
     <div className="stack-lg">
       <header className="today-head page-head">
@@ -113,13 +114,6 @@ export default function Today() {
           <EngineToday />
         </div>
       </div>
-      <section className="stack" id="learning" aria-labelledby="h-learning">
-        <div className="sec-title">
-          <h2 id="h-learning">Learning library</h2>
-          <span className="muted small">Every past lesson and course module. Read at your own pace.</span>
-        </div>
-        <LearningLibrary />
-      </section>
     </div>
   );
 }
