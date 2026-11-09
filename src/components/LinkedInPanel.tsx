@@ -100,9 +100,39 @@ function Who({ o }: { o: Outreach }) {
   );
 }
 
+
+// ---------- one-click copy + open ----------
+
+/** A LinkedIn link that opens one specific post (not a search or an activity feed). */
+function isExactPost(url: string | null | undefined): boolean {
+  return !!url && /linkedin\.com\/(feed\/update\/|posts\/)/i.test(url);
+}
+
+/** The post's opening words, as the agent records them in the note. */
+export function postOpening(note: string | null | undefined): string | null {
+  const m = /(?:Find the post starting|Opening):\s*["“]([^"”]+)/i.exec(note ?? "");
+  if (!m) return null;
+  return m[1].trim().split(/\s+/).slice(0, 8).join(" ").replace(/[.,;:]+$/, "");
+}
+
+/** Exact post link if we have one; otherwise a LinkedIn search for the post's opening words. */
+function postHref(o: Outreach): string | null {
+  if (isExactPost(o.link)) return safeHref(o.link);
+  const words = postOpening(o.note);
+  if (words) return `https://www.linkedin.com/search/results/content/?keywords=${encodeURIComponent(`"${words}"`)}&sortBy=%22date_posted%22`;
+  return safeHref(o.link);
+}
+
+/** Copy the text and open the page in one click (open must stay inside the click for popup blockers). */
+function copyAndOpen(text: string, href: string | null, tip: string) {
+  const ok = copyNow(text);
+  if (href) window.open(href, "_blank", "noopener,noreferrer");
+  toast(ok ? tip : "Opened. Your browser would not copy it, so select the text and copy it by hand.", ok);
+}
+
 function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null; onSent: () => void }) {
   const [busy, setBusy] = useState(false);
-  const copy = () => toast(copyNow(o.body ?? "") ? "Copied. Paste it into LinkedIn, send, then press Mark sent." : "Your browser would not copy it. Select the text and copy it by hand.");
+  const copy = () => copyAndOpen(o.body ?? "", profile, "Copied and opened. Press Message, paste, send, then press Mark sent.");
   const sent = async () => {
     if (busy) return;
     setBusy(true);
@@ -122,8 +152,7 @@ function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null;
       <Who o={o} />
       <p className="li-msg">{o.body || "(no text)"}</p>
       <div className="li-acts">
-        <button type="button" className="btn small" onClick={copy}>Copy</button>
-        {profile && <a className="btn small" href={profile} target="_blank" rel="noopener noreferrer">Open profile<Icon.external /></a>}
+        <button type="button" className="btn small" onClick={copy}>{profile ? "Copy & open profile" : "Copy"}<Icon.external /></button>
         <button type="button" className="btn small primary" disabled={busy} onClick={() => void sent()}>{busy ? "Saving…" : "Mark sent"}</button>
       </div>
     </li>
@@ -133,7 +162,7 @@ function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null;
 function NoteRow({ o, contact, profile, onDone }: { o: Outreach; contact: LiContact | null; profile: string | null; onDone: () => void }) {
   const note = connectionNote(o);
   const [busy, setBusy] = useState(false);
-  const copy = () => toast(copyNow(note ?? "") ? "Copied. Paste it into the connection request, then press Request sent." : "Your browser would not copy it.");
+  const copy = () => copyAndOpen(note ?? "", profile, "Copied and opened. Connect, add a note, paste, send, then press Request sent.");
   const done = async () => {
     if (busy) return;
     setBusy(true);
@@ -151,8 +180,7 @@ function NoteRow({ o, contact, profile, onDone }: { o: Outreach; contact: LiCont
       <Who o={o} />
       {note ? <p className="li-msg li-note">{note}</p> : <p className="li-msg muted">No connection note drafted. A short hello works.</p>}
       <div className="li-acts">
-        <button type="button" className="btn small" disabled={!note} onClick={copy}>Copy</button>
-        {profile && <a className="btn small" href={profile} target="_blank" rel="noopener noreferrer">Open profile<Icon.external /></a>}
+        <button type="button" className="btn small" disabled={!note} onClick={copy}>{profile ? "Copy & open profile" : "Copy"}<Icon.external /></button>
         <button type="button" className="btn small" disabled={busy} onClick={() => void done()}>{busy ? "Saving…" : "Request sent"}</button>
       </div>
     </li>
@@ -211,8 +239,10 @@ function AgentBar({ lane, setLane, counts }: { lane: Lane; setLane: (l: Lane) =>
 
 function CommentRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
   const [busy, setBusy] = useState(false);
-  const post = safeHref(o.link);
-  const copy = () => toast(copyNow(o.body ?? "") ? "Copied. Paste it under the post, then press Commented." : "Your browser would not copy it.");
+  const post = postHref(o);
+  const exact = isExactPost(o.link);
+  const opening = postOpening(o.note);
+  const copy = () => copyAndOpen(o.body ?? "", post, exact ? "Copied and opened the post. Paste your comment, post it, then press Commented." : "Copied. The post should be the top result: open it, paste, post, then press Commented.");
   const done = async () => {
     if (busy) return;
     setBusy(true);
@@ -229,10 +259,10 @@ function CommentRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
   return (
     <li className="li-row">
       <Who o={o} />
+      {opening && <p className="muted small li-post">On the post: “{opening}…”</p>}
       <p className="li-msg">{o.body || "(no text)"}</p>
       <div className="li-acts">
-        <button type="button" className="btn small" onClick={copy}>Copy</button>
-        {post && <a className="btn small" href={post} target="_blank" rel="noopener noreferrer">Open post<Icon.external /></a>}
+        <button type="button" className="btn small" onClick={copy}>{post ? (exact ? "Copy & open post" : "Copy & find post") : "Copy"}<Icon.external /></button>
         <button type="button" className="btn small primary" disabled={busy} onClick={() => void done()}>{busy ? "Saving…" : "Commented"}</button>
       </div>
     </li>
