@@ -4,8 +4,8 @@ The private web console for the Nodus Origination Engine. Three screens run the 
 **Engine**. Everything else (Leads desk, Mandates, Priorities, Contacts, Deals, Outreach log, Daily report, Signals,
 Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works but is not in the nav.
 
-- **Today** (`#/`, the home screen): the brief's headline and the sending line: "Emails go out when you press Send
-  (via Apollo)." There are no scheduled sends. Below the Send deck: **Older approved (pre-27 Oct style)** (Review or
+- **Today** (`#/`, the home screen): the brief's headline and the sending line: "Emails go out from your Gmail when you
+  press Send." There are no scheduled sends. Below the Send deck: **Older approved (pre-27 Oct style)** (Review or
   Park all; never sent automatically) and **Sent & replies** (the `activity` action of `nodus-apollo`: replied first with
   Reply in Gmail and Move to deal, then bounced, then in sequence). **Focus session**: the brief's `do_now`, three at most, one button
   each (a Gmail link shows "Open draft in Gmail"); items with no link share one "Hand these to Claude" chat, the only
@@ -31,7 +31,7 @@ Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works
 - **Enrich & draft** (opportunity page, Engine panel, Matches): asks for decision makers through `enrich_request` (the
   same path as Enrich) and opens Claude to enrich with Apollo and draft first touches for approval.
 - **Review** (`#/review`, `#/review?priority=<id>`, `#/review?old=1` for the older approved queue): the deck on its
-  own. Email: Send (Apollo, now), Hold (parked with a reason: second contact at same firm, live account, later, other),
+  own. Email: Send (from Gmail, now), Hold (parked with a reason: second contact at same firm, live account, later, other),
   Edit, Skip, Later; grouped by mandate with counts; one email per company (the higher-fit draft first; Send holds the
   others). LinkedIn: Copy & open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: S send,
   H hold, E edit, K skip, C copy, L later. Hold has Undo.
@@ -84,6 +84,22 @@ Nodus database on Supabase.
    address from step 1, and add the same address to **Redirect URLs**.
 4. Optional but sensible: in *Authentication → Sign In / Providers* switch off **Allow new users to sign
    up**, so only the accounts you create can sign in.
+
+## Sending (Gmail) and prospecting (Apollo)
+
+- **Send** calls the `nodus-send` Edge Function, which sends from Kuran's Gmail (the info@nodus.equipment Google
+  Workspace mailbox) through the Gmail API. **Capital goes from kuran@nodus.partners** (a verified "Send mail as" alias);
+  **everything else goes from info@nodus.equipment**. When the row has a Gmail draft, that draft is the one sent, so
+  edits made in Gmail count. The row is marked sent with `| gmail:<id> | from:<address>` in its note.
+- Checks before every send: draft or approved email with an address; not do-not-contact or already in conversation;
+  one company at a time for first touches (no other email to that domain in 90 days); the daily cap (secret
+  `SEND_DAILY_CAP`, default 50, from UK midnight); the From address is verified in Gmail. Send all waits 4 seconds
+  between emails and stops on any problem that would stop them all.
+- Secrets (Supabase → Edge Functions → Secrets): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`
+  (Google OAuth client on the nodus.equipment Workspace, internal app, scopes `gmail.modify` and
+  `gmail.settings.basic`). Setup steps: `docs/gmail-setup.md`.
+- **Apollo** (`nodus-apollo`) is for finding and enriching people only (Find, Enrich, credits, activity). Its `send`
+  action is no longer called by the console.
 
 ## For developers
 

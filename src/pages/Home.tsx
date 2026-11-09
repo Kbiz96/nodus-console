@@ -79,7 +79,7 @@ export default function Home() {
   const [done, toggleDone] = useDone(day);
 
   const brief: Brief | null = briefQ.data ?? null;
-  // Sending is a press of Send (via Apollo); the line also says when the last email went out, when known.
+  // Sending is a press of Send (from Gmail); the line also says when the last email went out, when known.
   const sendEnabled = sendState(liveQ.data?.lastSentAt ?? null);
   const owed = repliesOwed(brief?.replies ?? [], repliedQ.data ?? []);
   const live = liveQ.data ? liveItems({ ...liveQ.data, replies: owed.length }, sendEnabled) : [];

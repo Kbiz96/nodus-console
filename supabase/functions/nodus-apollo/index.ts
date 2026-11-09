@@ -1,5 +1,5 @@
-// nodus-apollo: the console's only bridge to Apollo.io.
-//   send   {outreach_id, sequence?}   draft/approved email -> Apollo contact (+ custom fields) -> sequence. Marks the row sent.
+// nodus-apollo: the console's only bridge to Apollo.io, for prospecting. It does not send email (nodus-send does, from Gmail).
+//   send   retired 9 Nov 2026: answers {ok:false, reason:'use_gmail'}. The old Apollo-sequence code is kept below, unused.
 //   find   {query, mandate_id?, find_request_id?}   engine matches first, then Apollo qualified against the mandate's rails
 //          (criteria + card.icp): one page of company search (Apollo may count credits on some plans), then people
 //          search at those companies (free, no emails). Nothing is revealed here.
@@ -443,7 +443,9 @@ Deno.serve(async (req) => {
   const key = Deno.env.get("APOLLO_API_KEY") || undefined;
   const noKey = () => fail("missing_api_key", { message: SETUP });
   try {
-    if (b.action === "send") return key ? await send(db, key, b) : noKey();
+    // Sending moved to Gmail (nodus-send, 9 Nov 2026). Apollo is for finding and enriching people only.
+    if (b.action === "send") return fail("use_gmail", { message: "Emails send from Gmail now (nodus-send). Apollo does not send." });
+    void send;
     if (b.action === "find") return await find(db, key, b, email);
     if (b.action === "enrich") return key ? await enrich(db, key, b) : noKey();
     if (b.action === "draft") return fail("use_claude", { message: "Drafting is done by Claude: use Draft, which opens a Nodus chat." });

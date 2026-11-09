@@ -1,4 +1,4 @@
-# Manual check that the nodus-apollo Edge Function refuses callers without a login.
+# Manual check that the nodus-apollo and nodus-send Edge Functions refuse callers without a login.
 # It never sends a key or a session: it only proves the door is locked (expects HTTP 401).
 name: Probe nodus-apollo
 on:
@@ -17,5 +17,12 @@ jobs:
           code=$(curl -s -o /tmp/body -w '%{http_code}' -X POST \
             https://tfsioiuvmyuqgajxtklv.supabase.co/functions/v1/nodus-apollo \
             -H 'content-type: application/json' -d '{"action":"find","query":"probe"}')
+          echo "status $code"; cat /tmp/body; echo
+          test "$code" = "401"
+      - name: Unauthenticated send must be refused
+        run: |
+          code=$(curl -s -o /tmp/body -w '%{http_code}' -X POST \
+            https://tfsioiuvmyuqgajxtklv.supabase.co/functions/v1/nodus-send \
+            -H 'content-type: application/json' -d '{"action":"status"}')
           echo "status $code"; cat /tmp/body; echo
           test "$code" = "401"

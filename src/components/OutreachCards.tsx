@@ -4,7 +4,7 @@ import { OUTREACH_KIND_LABEL, OUTREACH_STATUS_LABEL } from "../lib/crm.ts";
 import { fmtDateTime } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import type { Outreach } from "../lib/types.ts";
-import { apolloFailText, apolloSend } from "../lib/apollo.ts";
+import { gmailSend, sendFailText } from "../lib/send.ts";
 import { sentText } from "../lib/today.ts";
 import { ExtLink } from "./ui.tsx";
 
@@ -24,7 +24,7 @@ function who(o: Outreach): string {
   return [o.to_name, o.company].filter(Boolean).join(" · ") || "Unnamed recipient";
 }
 
-/** A draft waiting for Kuran: email Send (via Apollo, now), LinkedIn ready to send by hand; edit or skip through outreach_decide. */
+/** A draft waiting for Kuran: email Send (from Gmail, now), LinkedIn ready to send by hand; edit or skip through outreach_decide. */
 export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void }) {
   const isEmail = o.channel === "email" || o.kind === "email" || o.kind === "followup";
   const [subject, setSubject] = useState(o.subject ?? "");
@@ -40,8 +40,8 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
     try {
       if ((what === "approve" || what === "send") && dirty) await outreachDecide(o.id, "edit", isEmail ? subject : o.subject, body);
       if (what === "send") {
-        const r = await apolloSend(o.id);
-        setMsg(r.ok ? { ok: true, text: sentText(o.to_name, r.sequence?.name ?? null) } : { ok: false, text: apolloFailText(r).text });
+        const r = await gmailSend(o.id);
+        setMsg(r.ok ? { ok: true, text: `${sentText(o.to_name, r.from)}${r.warning ? ` ${r.warning}` : ""}` } : { ok: false, text: sendFailText(r).text });
         if (r.ok) { outreachChanged(); onChanged(); }
         return;
       }

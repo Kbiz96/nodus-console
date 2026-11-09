@@ -6,7 +6,8 @@ import { copyNow, withSignoff, deckFit, outreachChanged, outreachDecide, outreac
 import { HOLD_REASONS, companyClashes, deckGroups, frontGroup, type Clash, type HoldKey } from "../lib/deck.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, priorityPrompt } from "../lib/focus.ts";
 import { sendStatusText, sentText, type SendState } from "../lib/today.ts";
-import { apolloFailText, apolloSend, type ApolloFail } from "../lib/apollo.ts";
+import { STOP_ALL, gmailSend, sendFailText, type SendFail } from "../lib/send.ts";
+import { apolloFailText, type ApolloFail } from "../lib/apollo.ts";
 import { useHandoffs } from "./handoff.ts";
 import { OUTREACH_KIND_LABEL } from "../lib/crm.ts";
 import { withoutParked } from "../lib/mandates.ts";
@@ -44,7 +45,7 @@ async function load(priorityId: string | null, opportunityId: string | null = nu
 type Done = { text: string; ok: boolean };
 
 /**
- * One email at a time, Send first: Send (Apollo sends it now, with the follow-ups), Hold (parked, with a reason),
+ * One email at a time, Send first: Send (it goes from Gmail now), Hold (parked, with a reason),
  * Edit, Skip. There is no approve step. Cards are grouped by mandate with counts; when two drafts go to the same
  * company, the higher-fit one comes first and Send holds the other as a second contact at the same firm.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
@@ -201,7 +202,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
           onDone={(ids, failText) => {
             setQueue((q) => (q ?? []).filter((id) => !ids.includes(id)));
             setHandled((h) => h + ids.length);
-            setLast({ ok: !failText, text: `Sent ${ids.length} for ${group.label} via Apollo.${failText ? ` ${failText}` : ""}` });
+            setLast({ ok: !failText, text: `Sent ${ids.length} for ${group.label} from Gmail.${failText ? ` ${failText}` : ""}` });
             outreachChanged();
             onChanged?.();
           }}
@@ -251,7 +252,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [apolloFail, setApolloFail] = useState<ApolloFail | null>(null);
+  const [sendFail, setSendFail] = useState<SendFail | null>(null);
   // One per company: sending the higher-fit one holds the others at that firm, unless Kuran unticks it.
   const keepThis = Boolean(clash && clash.keep === o.id);
   const [holdSiblings, setHoldSiblings] = useState(true);
@@ -290,7 +291,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
     if (busy) return;
     setBusy(what);
     setErr(null);
-    setApolloFail(null);
+    setSendFail(null);
     try {
       if (what === "save") {
         await saveEdit();
@@ -300,9 +301,9 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
       }
       if (dirty && !manual && what !== "skip") await saveEdit();
       if (what === "send") {
-        // Send: Apollo puts them into the sequence for this line and sends it, with the follow-ups.
-        const r = await apolloSend(o.id);
-        if (!r.ok) { setApolloFail(r); return; }
+        // Send: from Kuran's Gmail now (the Gmail draft when there is one), from the right address for the line.
+        const r = await gmailSend(o.id);
+        if (!r.ok) { setSendFail(r); return; }
         let heldText = "";
         const gone: string[] = [];
         if (keepThis && holdSiblings && siblings.length) {
@@ -312,7 +313,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
             heldText = ` Held ${n} other${n === 1 ? "" : "s"} at ${clash?.domain} (second contact at same firm).`;
           }
         }
-        const text = `${sentText(o.to_name, r.sequence?.name ?? null)}${heldText}${r.note ? ` ${r.note}` : ""}${r.warning ? ` ${r.warning}` : ""}`;
+        const text = `${sentText(o.to_name, r.from)}${heldText}${r.warning ? ` ${r.warning}` : ""}`;
         onDone({ ok: true, text }, false, gone);
         if (gone.length) toast(heldText.trim(), true, { ms: 9000, actions: [{ label: "Undo hold", primary: true, run: () => onUndo(gone) }] });
       } else if (what === "skip") {
@@ -437,7 +438,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
           </>
         ) : (
           <>
-            <button className="btn big primary" type="button" disabled={Boolean(busy) || !o.to_email} onClick={() => act("send")} title={o.to_email ? "Sends through Apollo now, with the follow-ups" : "No email address on this draft"}>
+            <button className="btn big primary" type="button" disabled={Boolean(busy) || !o.to_email} onClick={() => act("send")} title={o.to_email ? "Sends from your Gmail now: capital from kuran@nodus.partners, everything else from info@nodus.equipment" : "No email address on this draft"}>
               {busy === "send" ? "Sending…" : dirty ? "Save & send" : "Send"}
             </button>
             <button className="btn big" type="button" disabled={Boolean(busy)} aria-expanded={holding} onClick={() => setHolding((v) => !v)}>Hold</button>
@@ -466,8 +467,8 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
           </span>
         </div>
       )}
-      {!li && apolloFail && <ApolloNote fail={apolloFail} />}
-      {!li && <p className="deck-hint">{sendStatusText(sendEnabled)} Apollo sends the follow-ups too.</p>}
+      {!li && sendFail && <SendNote fail={sendFail} />}
+      {!li && <p className="deck-hint">{sendStatusText(sendEnabled)} Capital goes from kuran@nodus.partners, everything else from info@nodus.equipment.</p>}
       {li && !profile && <p className="deck-hint">No LinkedIn link on this one: copy the message and find them on LinkedIn yourself.</p>}
       {li && profile && <p className="deck-hint">You send LinkedIn messages yourself. Copy, paste, send, then press Mark sent.</p>}
       {err && <p className="error" role="alert">{err}</p>}
@@ -475,7 +476,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
   );
 }
 
-/** A failed Apollo call, in one line, with the place to fix it when there is one. */
+/** A failed Apollo call (Find, Enrich, activity), in one line, with the place to fix it when there is one. */
 export function ApolloNote({ fail }: { fail: ApolloFail }) {
   const { text, link } = apolloFailText(fail);
   return (
@@ -485,16 +486,27 @@ export function ApolloNote({ fail }: { fail: ApolloFail }) {
   );
 }
 
-/** Sends several drafts through Apollo, one after another. Stops at the first problem that would stop them all. */
-async function sendMany(ids: string[], onStep?: (n: number) => void): Promise<{ sent: string[]; fails: ApolloFail[] }> {
+/** A failed Gmail send, in one line, with the place to fix it when there is one. Nothing was marked sent. */
+export function SendNote({ fail }: { fail: SendFail }) {
+  const { text, link } = sendFailText(fail);
+  return (
+    <p className={`apollo-note${fail.reason === "gmail_not_connected" ? " is-setup" : ""}`} role="alert">
+      {text}{link && <> <a href={link.href} target="_blank" rel="noopener noreferrer">{link.label}<Icon.external /></a></>}
+    </p>
+  );
+}
+
+/** Sends several drafts from Gmail, one after another, a few seconds apart. Stops at the first problem that would stop them all. */
+async function sendMany(ids: string[], onStep?: (n: number) => void): Promise<{ sent: string[]; fails: SendFail[] }> {
   const sent: string[] = [];
-  const fails: ApolloFail[] = [];
+  const fails: SendFail[] = [];
   for (const id of ids) {
-    const r = await apolloSend(id);
+    if (sent.length + fails.length > 0) await new Promise((res) => setTimeout(res, 4000));
+    const r = await gmailSend(id);
     if (r.ok) sent.push(id);
     else {
       fails.push(r);
-      if (["missing_api_key", "apollo_auth", "unreachable", "not_allowed", "rate_limited"].includes(r.reason)) break;
+      if (STOP_ALL.includes(r.reason)) break;
     }
     onStep?.(sent.length + fails.length);
   }
@@ -510,7 +522,7 @@ function SendAll({ label, rows, clashes, onDone }: {
 }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [fail, setFail] = useState<ApolloFail | null>(null);
+  const [fail, setFail] = useState<SendFail | null>(null);
   const ids = new Set(rows.map((r) => r.id));
   const left = rows.filter((r) => { const c = clashes.get(r.id); return c && c.keep !== r.id && ids.has(c.keep); });
   const send = rows.filter((r) => !left.includes(r) && r.to_email);
@@ -523,7 +535,7 @@ function SendAll({ label, rows, clashes, onDone }: {
     setBusy(false);
     if (sent.length === 0) { setFail(fails[0] ?? { ok: false, reason: "error", message: "Nothing was sent." }); return; }
     setOpen(false);
-    onDone(sent, fails.length ? `${fails.length} not sent: ${apolloFailText(fails[0]).text}` : null);
+    onDone(sent, fails.length ? `${fails.length} not sent: ${sendFailText(fails[0]).text}` : null);
   };
 
   if (n < 2) return null;
@@ -546,12 +558,12 @@ function SendAll({ label, rows, clashes, onDone }: {
         ))}
       </ol>
       {left.length > 0 && <p className="muted small">Left in the deck (second contact at the same firm): {left.map((r) => r.to_name || r.to_email).join(", ")}.</p>}
-      <p className="muted small">Each goes into the Apollo sequence for its line; Apollo sends it and the follow-ups. Sent emails cannot be recalled.</p>
+      <p className="muted small">Each goes from your Gmail, a few seconds apart: capital from kuran@nodus.partners, everything else from info@nodus.equipment. Sent emails cannot be recalled.</p>
       <div className="action-row">
         <button type="button" className="btn primary" disabled={busy} onClick={() => void sendAll()}>{busy ? "Sending…" : `Confirm: send ${fmtNumber(n)}`}</button>
         <button type="button" className="btn ghost" disabled={busy} onClick={() => setOpen(false)}>Cancel</button>
       </div>
-      {fail && <ApolloNote fail={fail} />}
+      {fail && <SendNote fail={fail} />}
     </div>
   );
 }

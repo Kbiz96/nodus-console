@@ -7,14 +7,14 @@ import {
 import { briefAction, focusSession, briefItems, liveItems, parseBrief, sessionPrompt } from "../src/lib/brief.ts";
 
 test("sending line: press Send, Apollo does the rest; plus the last real send when known", () => {
-  assert.equal(SEND_TEXT, "Emails go out when you press Send (via Apollo).");
+  assert.equal(SEND_TEXT, "Emails go out from your Gmail when you press Send.");
   assert.equal(sendStatusText(null), SEND_TEXT);
   assert.equal(sendStatusText({ kind: "none" }), SEND_TEXT);
-  assert.equal(sendStatusText({ kind: "last", at: "2026-10-27T10:55:25Z" }), "Emails go out when you press Send (via Apollo). Last email went out Tue 27 Oct, 10:55.");
+  assert.equal(sendStatusText({ kind: "last", at: "2026-10-27T10:55:25Z" }), "Emails go out from your Gmail when you press Send. Last email went out Tue 27 Oct, 10:55.");
   assert.deepEqual(sendState("2026-10-27T10:55:25Z"), { kind: "last", at: "2026-10-27T10:55:25Z" });
   assert.deepEqual(sendState(null), { kind: "none" });
   assert.ok(!sendStatusText({ kind: "none" }).includes(":53"));
-  assert.equal(sentText("Alex", "Capital / investors"), "Sent Alex via Apollo (Capital / investors sequence).");
+  assert.equal(sentText("Alex", "kuran@nodus.partners"), "Sent Alex from kuran@nodus.partners.");
 });
 
 test("the last real send within the last weekday day", () => {

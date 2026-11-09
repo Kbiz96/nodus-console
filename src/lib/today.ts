@@ -7,8 +7,8 @@ import type { CrmContact, Deal, Outreach } from "./types.ts";
 
 // ---------- sending ----------
 
-/** Sending is one press: Send on a draft puts it into the right Apollo sequence, and Apollo sends it and the follow-ups. */
-export const SEND_TEXT = "Emails go out when you press Send (via Apollo).";
+/** Sending is one press: Send on a draft sends it from Kuran's Gmail now (capital from kuran@nodus.partners, the rest from info@nodus.equipment). */
+export const SEND_TEXT = "Emails go out from your Gmail when you press Send.";
 
 /** What the console knows about recent sending: when the last email went out (last weekday day), or nothing. */
 export type SendState = { kind: "last"; at: string } | { kind: "none" };
@@ -49,8 +49,8 @@ export function sendStatusText(v: SendState | null | undefined): string {
 }
 
 /** What Send says afterwards. */
-export function sentText(name: string | null, sequence: string | null): string {
-  return `Sent ${name || "the email"} via Apollo${sequence ? ` (${sequence} sequence)` : ""}.`;
+export function sentText(name: string | null, from: string | null): string {
+  return `Sent ${name || "the email"} from ${from || "Gmail"}.`;
 }
 
 export function isGmailUrl(url: string | null | undefined): boolean {

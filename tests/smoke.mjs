@@ -93,6 +93,13 @@ function fake(approved, data = fx) {
     }
     if (u.pathname === "/auth/v1/user") return json(200, user);
     if (u.pathname === "/auth/v1/logout") return route.fulfill({ status: 204, headers: { "access-control-allow-origin": "*" } });
+    if (u.pathname === "/functions/v1/nodus-send") {
+      const body = req.postDataJSON?.() ?? {};
+      fnCalls.push({ fn: "nodus-send", ...body });
+      if (body.action === "send") return json(200, { ok: true, from: "kuran@nodus.partners", lane: "capital", via: "draft", message_id: "m1", thread_id: "t1", sent_today: 1, cap: 50 });
+      if (body.action === "status") return json(200, { ok: true, connected: true, verified: ["info@nodus.equipment", "kuran@nodus.partners"], missing: [], cap: 50, sent_today: 0, routing: { capital: "kuran@nodus.partners", other: "info@nodus.equipment" } });
+      return json(200, { ok: false, reason: "unknown_action" });
+    }
     if (u.pathname === "/functions/v1/nodus-apollo") {
       const body = req.postDataJSON?.() ?? {};
       fnCalls.push(body);
@@ -236,7 +243,7 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(/Good (morning|afternoon|evening), Kuran\.$/.test((await page.locator(".home-dateline").textContent()) ?? ""), at("Today greets Kuran"));
   await page.locator(".home-headline:not(.is-quiet)").waitFor();
   check((await page.locator(".home-headline").textContent()) === "Al-Risha offtaker LOI is the week’s swing. Two neocloud calls today decide it.", at("Today opens with the brief's headline"));
-  check((await page.locator(".sendline").textContent()) === "Emails go out when you press Send (via Apollo).", at("the sending line says Send sends via Apollo"));
+  check((await page.locator(".sendline").textContent()) === "Emails go out from your Gmail when you press Send.", at("the sending line says Send sends from Gmail"));
   check(await page.getByText(/go out every hour/).count() === 0, at("nothing on Today promises batch times"));
   // ---- Questions for you: open crm_actions questions, answered inline ----
   await page.getByRole("heading", { name: "Questions for you" }).waitFor();
@@ -288,12 +295,12 @@ async function todayFlow(page, label, at, newRpc, newWrites) {
   check(await why.locator("summary").textContent() === "Why this person" && await why.getAttribute("open") === null, at("the research card is folded under Why this person"));
   await why.locator("summary").click();
   check((await why.locator("p").textContent())?.startsWith("Head of Energy at Example Power"), at("Why this person opens the research card"));
-  check((await deck.locator(".deck-hint").textContent())?.includes("Emails go out when you press Send (via Apollo)."), at("the deck says Send sends via Apollo"));
+  check((await deck.locator(".deck-hint").textContent())?.includes("Emails go out from your Gmail when you press Send."), at("the deck says Send sends from Gmail"));
   for (const b of ["Send", "Hold", "Skip", "Edit"]) check(await deck.getByRole("button", { name: b, exact: true }).count() === 1, at(`the deck card has ${b}`));
   const fnBefore = fnCalls.length;
   await deck.getByRole("button", { name: "Send", exact: true }).click();
-  await deck.getByText("Sent Alex Example via Apollo (Capital / investors sequence).").first().waitFor();
-  check(fnCalls.slice(fnBefore).some((c) => c.action === "send" && c.outreach_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Send calls the nodus-apollo function for this draft"));
+  await deck.getByText("Sent Alex Example from kuran@nodus.partners.").first().waitFor();
+  check(fnCalls.slice(fnBefore).some((c) => c.action === "send" && c.outreach_id === "eeeeeeee-1111-4000-8000-000000000001"), at("Send calls the nodus-send function for this draft"));
   await deck.getByText("All done. Nothing else is waiting for you.").waitFor();
   check(await deck.getByRole("link", { name: /Ask Claude/ }).count() === 0, at("the empty deck on Today offers no extra Claude chat"));
   // ---- Credits chip, Sent & replies, build stamp ----
@@ -994,7 +1001,7 @@ try {
     check(/^Today’s brief arrives at 06:40\.|^No brief at weekends\./.test(note), `with no brief, Today says when it arrives (got "${note}")`);
     const liveTexts = (await p3.locator(".do-row .do-text").allTextContents()).join("|");
     check(/^Answer 1 reply\|Send \d+ emails?\|Approve or dismiss 18 new leads$/.test(liveTexts), `with no brief, live items stand in for the focus session (${liveTexts})`);
-    check((await p3.locator(".sendline").textContent()) === "Emails go out when you press Send (via Apollo).", "with no brief, the sending line still says Send sends via Apollo");
+    check((await p3.locator(".sendline").textContent()) === "Emails go out from your Gmail when you press Send.", "with no brief, the sending line still says Send sends from Gmail");
     check(await p3.locator(".home-calls").count() === 0, "with no brief, there is no calls or digest panel");
     // No brief but one email went out: the line reports that send, without promising the batch times.
     nb.tables.outreach = [...fx.tables.outreach, { id: "eeeeeeee-9999-4000-8000-000000000001", kind: "email", channel: "email", status: "sent", sent_at: new Date(Date.now() - 2 * 3600e3).toISOString(), to_name: "Sent Today", created_at: new Date(Date.now() - 30 * 3600e3).toISOString() }];
@@ -1065,7 +1072,7 @@ try {
     if (!big.tables.outreach.some((o) => o.id === "eeeeeeee-7777-4000-8000-000000000001")) big.tables.outreach = [...big.tables.outreach, { id: "eeeeeeee-7777-4000-8000-000000000001", kind: "email", channel: "email", status: "approved", to_email: "approved@example.com", to_name: "Approved Person", body: "x", created_at: new Date(Date.now() - 3 * 3600e3).toISOString(), approved_at: new Date(Date.now() - 3600e3).toISOString(), sent_at: null, replied_at: null, priority_id: null }];
     await p.reload();
     await p.locator(".sendline").waitFor();
-    check((await p.locator(".sendline").textContent())?.startsWith("Emails go out when you press Send (via Apollo)."), `the sending line says Send sends via Apollo (${name})`);
+    check((await p.locator(".sendline").textContent())?.startsWith("Emails go out from your Gmail when you press Send."), `the sending line says Send sends from Gmail (${name})`);
     await p.locator("#approve .deck-card").waitFor();
     await p.locator(".mrow").first().waitFor();
     await p.waitForTimeout(500);
