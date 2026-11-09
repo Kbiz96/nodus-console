@@ -105,7 +105,13 @@ function Who({ o }: { o: Outreach }) {
 
 /** A LinkedIn link that opens one specific post (not a search or an activity feed). */
 function isExactPost(url: string | null | undefined): boolean {
-  return !!url && /linkedin\.com\/(feed\/update\/|posts\/)/i.test(url);
+  return !!url && (/linkedin\.com\/(feed\/update\/|posts\/)/i.test(url) || /lnkd\.in\/p\//i.test(url));
+}
+
+/** The researched reason for reaching out, as the agent records it in the note ("WHY: ..."). */
+export function whyLine(note: string | null | undefined): string | null {
+  const m = /WHY:\s*(.+?)(?:\s+·\s+(?:Rewritten|Checked|If not connected|Find the post)|$)/.exec(note ?? "");
+  return m ? m[1].replace(/,?\s*https?:\/\/[^\s)]+/g, "").replace(/\(\s*\)/g, "").trim().slice(0, 240) : null;
 }
 
 /** The post's opening words, as the agent records them in the note. */
@@ -150,6 +156,7 @@ function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null;
   return (
     <li className="li-row">
       <Who o={o} />
+      {whyLine(o.note) && <p className="muted small li-post">Why them: {whyLine(o.note)}</p>}
       <p className="li-msg">{o.body || "(no text)"}</p>
       <div className="li-acts">
         <button type="button" className="btn small" onClick={copy}>{profile ? "Copy & open profile" : "Copy"}<Icon.external /></button>
