@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
-import { copyNow, deckFit, outreachChanged, outreachDecide, outreachHold, outreachMarkSent, outreachUnpark } from "../lib/data.ts";
+import { copyNow, withSignoff, deckFit, outreachChanged, outreachDecide, outreachHold, outreachMarkSent, outreachUnpark } from "../lib/data.ts";
 import { HOLD_REASONS, companyClashes, deckGroups, frontGroup, type Clash, type HoldKey } from "../lib/deck.ts";
 import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, priorityPrompt } from "../lib/focus.ts";
 import { sendStatusText, sentText, type SendState } from "../lib/today.ts";
@@ -331,7 +331,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
   };
 
   const copyOpen = () => {
-    const ok = copyNow(body);
+    const ok = copyNow(li ? withSignoff(body) : body);
     setCopied(true);
     toast(ok ? (profile ? "Copied. Paste it into LinkedIn, then come back and press Mark sent." : "Copied.") : "Your browser would not copy it. Select the text and copy it by hand.", ok);
     if (profile) window.open(profile, "_blank", "noopener,noreferrer");

@@ -681,3 +681,13 @@ export async function dealFromReply(r: { to_name: string | null; to_email: strin
   if (!rows?.[0]?.id) throw new Error("The deal was not saved. Reload and try again.");
   return rows[0].id;
 }
+
+
+/** Kuran's LinkedIn sign-off. Added automatically to any DM that doesn't already carry the booking link. */
+export const CALENDAR_URL = "https://calendar.app.google/UM14qXc4ZQqxewFYA";
+export const LI_SIGNOFF = `Kuran\nNodus Partners · nodus.partners\nBook a time: ${CALENDAR_URL}`;
+export function withSignoff(body: string): string {
+  const b = (body ?? "").trimEnd();
+  if (!b || b.includes(CALENDAR_URL) || /calendar\.app\.google|calendly\.com/i.test(b)) return b;
+  return `${b.replace(/\n+(best|kind)? ?regards,?\s*\n*kuran\s*$/i, "").replace(/\n+kuran\s*$/i, "")}\n\n${LI_SIGNOFF}`;
+}

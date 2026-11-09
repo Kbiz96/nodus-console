@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { copyNow, linkedinLoad, linkedinRequestSent, outreachChanged, outreachDecide, outreachMarkSent, type LiContact } from "../lib/data.ts";
+import { copyNow, withSignoff, linkedinLoad, linkedinRequestSent, outreachChanged, outreachDecide, outreachMarkSent, type LiContact } from "../lib/data.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { connectionNote, splitLinkedIn } from "../lib/today.ts";
 import { fmtNumber, safeHref } from "../lib/format.ts";
@@ -138,7 +138,7 @@ function copyAndOpen(text: string, href: string | null, tip: string) {
 
 function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null; onSent: () => void }) {
   const [busy, setBusy] = useState(false);
-  const copy = () => copyAndOpen(o.body ?? "", profile, "Copied and opened. Press Message, paste, send, then press Mark sent.");
+  const copy = () => copyAndOpen(withSignoff(o.body ?? ""), profile, "Copied and opened. Press Message, paste, send, then press Mark sent.");
   const sent = async () => {
     if (busy) return;
     setBusy(true);
@@ -157,7 +157,7 @@ function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null;
     <li className="li-row">
       <Who o={o} />
       {whyLine(o.note) && <p className="muted small li-post">Why them: {whyLine(o.note)}</p>}
-      <p className="li-msg">{o.body || "(no text)"}</p>
+      <p className="li-msg">{o.body ? withSignoff(o.body) : "(no text)"}</p>
       <div className="li-acts">
         <button type="button" className="btn small" onClick={copy}>{profile ? "Copy & open profile" : "Copy"}<Icon.external /></button>
         <button type="button" className="btn small primary" disabled={busy} onClick={() => void sent()}>{busy ? "Saving…" : "Mark sent"}</button>
