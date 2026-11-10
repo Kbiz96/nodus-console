@@ -8,10 +8,10 @@ import { ukToday } from "../lib/crm.ts";
 import { greeting, ukLongDate } from "../lib/focus.ts";
 import { remember } from "../lib/calm.ts";
 import { withoutParked } from "../lib/mandates.ts";
-import { fmtNumber } from "../lib/format.ts";
+import { fmtDate, fmtNumber } from "../lib/format.ts";
 import { briefItems, briefMissingNote, couldDo, focusSession, liveItems, sessionPrompt, type Brief, type DoItem } from "../lib/brief.ts";
 import { repliesOwed, sendState, sendStatusText, type OwedRow } from "../lib/today.ts";
-import type { Outreach } from "../lib/types.ts";
+import type { Deal, Outreach } from "../lib/types.ts";
 import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { AskClaude } from "../components/PriorityCard.tsx";
 import Deck from "../components/Deck.tsx";
@@ -24,17 +24,25 @@ import { Icon } from "../components/Brand.tsx";
 import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 import { usePriorities } from "./Leads.tsx";
 
+const TABS = ["send", "linkedin", "replies", "questions", "plan"] as const;
+type Tab = (typeof TABS)[number];
+const TAB_KEY = "nodus-home-tab";
+
 /** Events that change the live counts: a draft decided, a lead approved or dismissed. */
 const LIVE_EVENTS = ["nodus-outreach-changed", "nodus-leads-changed"] as const;
 
-/** Scroll to a block on the page, opening it first if it is a folded <details>. */
+/** Focus items point at a block (approve, replies…). Those now live in tabs: open the right tab, then scroll to it. */
+const TAB_FOR: Record<string, Tab> = { approve: "send", linkedin: "linkedin", replies: "replies", questions: "questions", focus: "plan" };
 function jumpTo(id: string): void {
-  const el = document.getElementById(id);
-  if (!el) return;
-  if (el instanceof HTMLDetailsElement) el.open = true;
-  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
-  el.querySelector<HTMLElement>("summary, h2, [tabindex]")?.focus({ preventScroll: true });
+  const tab = TAB_FOR[id];
+  if (tab) window.dispatchEvent(new CustomEvent<Tab>("nodus-home-tab", { detail: tab }));
+  window.setTimeout(() => {
+    const el = document.getElementById(tab ? "work" : id);
+    if (!el) return;
+    if (el instanceof HTMLDetailsElement) el.open = true;
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  }, 0);
 }
 
 function useDone(day: string): [Set<string>, (key: string) => void] {
@@ -58,10 +66,9 @@ async function loadReplied(): Promise<Outreach[]> {
 }
 
 /**
- * Today: the front page and the only screen Kuran needs most days. Top to bottom: the brief's headline and the
- * honest sending line, the focus session (three things at most), replies owed (answers already drafted in Gmail),
- * questions left for him (answered inline), one email at a time to approve, LinkedIn he can send now, and the signed mandates as one-line rows.
- * There is one Claude hand-off on this screen: the focus session's items that have no link of their own.
+ * Today: the front page. Three blocks, no side rail (10 Nov 2026 rework): the headline and sending line; "On the desk",
+ * the live deals (heat = Hot) as cards; and one tabbed work panel (Send email, LinkedIn, Replies owed, Questions,
+ * Today's plan) so only one list is on screen at a time. Priorities and lead lanes sit folded at the bottom.
  */
 export default function Home() {
   useTitle("Today");
@@ -78,6 +85,18 @@ export default function Home() {
   }, [reloadLive]);
   const [done, toggleDone] = useDone(day);
 
+  const deskQ = useLoad(loadDesk, "desk");
+  const [tab, setTabState] = useState<Tab>(() => {
+    const t = remember(TAB_KEY);
+    return (TABS as readonly string[]).includes(t ?? "") ? (t as Tab) : "send";
+  });
+  const setTab = (t: Tab) => { remember(TAB_KEY, t); setTabState(t); };
+  useEffect(() => {
+    const on = (e: Event) => { const t = (e as CustomEvent<Tab>).detail; if (t) { remember(TAB_KEY, t); setTabState(t); } };
+    window.addEventListener("nodus-home-tab", on);
+    return () => window.removeEventListener("nodus-home-tab", on);
+  }, []);
+
   const brief: Brief | null = briefQ.data ?? null;
   // Sending is a press of Send (from Gmail); the line also says when the last email went out, when known.
   const sendEnabled = sendState(liveQ.data?.lastSentAt ?? null);
@@ -88,6 +107,15 @@ export default function Home() {
   const forClaude = session.filter((d) => d.action.kind === "claude" && !done.has(d.key));
   const waiting = briefQ.loading && !briefQ.data;
   const priorities = prioQ.data?.priorities ?? [];
+
+  const drafts = liveQ.data?.drafts ?? null;
+  const tabs: { id: Tab; label: string; count: number | null }[] = [
+    { id: "send", label: "Send email", count: drafts },
+    { id: "linkedin", label: "LinkedIn", count: null },
+    { id: "replies", label: "Replies owed", count: owed.length || null },
+    { id: "questions", label: "Questions", count: null },
+    { id: "plan", label: "Today’s plan", count: session.length || null },
+  ];
 
   return (
     <HandoffContext.Provider value={false}>
@@ -105,71 +133,83 @@ export default function Home() {
         </p>
       </header>
 
-      <div className="home-grid">
-        <section className="home-focus" id="focus" aria-labelledby="h-focus">
-          <div className="today-sec">
-            <h2 id="h-focus">Focus session</h2>
-            {session.length > 0 && <span className="muted small">{session.length === 1 ? "One thing" : `${session.length} things, in order`}</span>}
-          </div>
-          {session.length === 0 ? (
-            <p className="donow-empty">{liveQ.loading && !liveQ.data ? "Checking what’s waiting…" : "Nothing urgent. Open a mandate below and move it one step."}</p>
-          ) : (
-            <ol className="donow" aria-labelledby="h-focus">
-              {session.map((d, i) => (
-                <DoRow key={d.key} d={d} n={i + 1} first={i === 0} done={done.has(d.key)} onDone={d.live ? undefined : () => toggleDone(d.key)} />
-              ))}
-            </ol>
-          )}
-          {forClaude.length > 0 && (
-            <div className="session-claude">
-              <AskClaude className="btn" prompt={sessionPrompt(forClaude)}>
-                <Icon.claude />{forClaude.length === 1 ? "Hand the unlinked item to Claude" : `Hand these ${forClaude.length} to Claude`}
-              </AskClaude>
-              <span className="muted small">One chat for the items with no link. Drafts land in Gmail or here; nothing is sent.</span>
+      <section className="desk" aria-labelledby="h-desk">
+        <div className="today-sec">
+          <h2 id="h-desk">On the desk</h2>
+          <Link to="/deals" className="small muted">All deals</Link>
+        </div>
+        <Desk q={deskQ} today={day} />
+      </section>
+
+      <section className="work" id="work" aria-label="Work">
+        <div className="work-tabs" role="tablist" aria-label="What to work on">
+          {tabs.map((t) => (
+            <button key={t.id} type="button" role="tab" id={`tab-${t.id}`} aria-selected={tab === t.id} aria-controls={`panel-${t.id}`}
+              className={`work-tab${tab === t.id ? " is-on" : ""}`} onClick={() => setTab(t.id)}>
+              {t.label}{t.count != null && t.count > 0 && <span className="work-n">{fmtNumber(t.count)}</span>}
+            </button>
+          ))}
+        </div>
+        <div className="work-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+          {tab === "send" && (
+            <div id="approve">
+              <p className="muted small work-hint">Emails one at a time. Approve, edit or skip; Send goes from Gmail.</p>
+              <Deck priorities={priorities} onChanged={prioQ.reload} emailOnly sendEnabled={sendEnabled} />
+              <OlderApproved />
+              <SentLane />
             </div>
           )}
-          {could.length > 0 && (
-            <details className="could">
-              <summary>
-                <span>Could do</span>
-                <span className="muted small">{could.length} {could.length === 1 ? "idea" : "ideas"}, when the session is clear</span>
-              </summary>
-              <ul>
-                {could.map((c) => (
-                  <li key={c.key}>
-                    <span>{c.text}</span>
-                    {c.item && c.item.action.kind !== "claude" && <DoAct d={c.item} className="net-link" />}
-                  </li>
-                ))}
-              </ul>
-            </details>
+          {tab === "linkedin" && (
+            <div id="linkedin">
+              <p className="muted small work-hint">You send these yourself. The agent button drafts more.</p>
+              <LinkedInPanel />
+            </div>
           )}
-        </section>
-
-        <div className="home-side">
-          <section className="home-questions" id="questions" aria-labelledby="h-questions">
-            <div className="today-sec">
-              <h2 id="h-questions" tabIndex={-1}>Questions for you</h2>
-              <span className="muted small">Answer here; it goes on the record</span>
+          {tab === "replies" && (
+            <div id="replies">
+              <Replies rows={owed} loading={(briefQ.loading && !briefQ.data) || (repliedQ.loading && !repliedQ.data)} />
             </div>
-            <Questions />
-          </section>
-
-          <section className="home-replies" id="replies" aria-labelledby="h-replies">
-            <div className="today-sec">
-              <h2 id="h-replies" tabIndex={-1}>Replies owed</h2>
-              {owed.length > 0 && <span className="muted small">{fmtNumber(owed.length)} {owed.length === 1 ? "person is" : "people are"} waiting</span>}
+          )}
+          {tab === "questions" && (
+            <div id="questions">
+              <p className="muted small work-hint">Answer here; it goes on the record.</p>
+              <Questions />
             </div>
-            <Replies rows={owed} loading={(briefQ.loading && !briefQ.data) || (repliedQ.loading && !repliedQ.data)} />
-          </section>
-
-          {brief && (brief.calls.length > 0 || brief.digest.length > 0 || brief.rep) && (
-            <aside className="today-aside home-calls" aria-label="Today’s brief">
-              <div className="calls">
-                <h3>Calls today</h3>
-                {brief.calls.length === 0 ? (
-                  <p className="muted small">No calls today.</p>
-                ) : (
+          )}
+          {tab === "plan" && (
+            <div id="focus" className="plan">
+              {session.length === 0 ? (
+                <p className="donow-empty">{liveQ.loading && !liveQ.data ? "Checking what’s waiting…" : "Nothing urgent. Move one desk deal a step."}</p>
+              ) : (
+                <ol className="donow" aria-label="Today’s plan">
+                  {session.map((d, i) => (
+                    <DoRow key={d.key} d={d} n={i + 1} first={i === 0} done={done.has(d.key)} onDone={d.live ? undefined : () => toggleDone(d.key)} />
+                  ))}
+                </ol>
+              )}
+              {forClaude.length > 0 && (
+                <div className="session-claude">
+                  <AskClaude className="btn" prompt={sessionPrompt(forClaude)}>
+                    <Icon.claude />{forClaude.length === 1 ? "Hand the unlinked item to Claude" : `Hand these ${forClaude.length} to Claude`}
+                  </AskClaude>
+                </div>
+              )}
+              {could.length > 0 && (
+                <details className="could">
+                  <summary><span>Could do</span><span className="muted small">{could.length} {could.length === 1 ? "idea" : "ideas"}</span></summary>
+                  <ul>
+                    {could.map((c) => (
+                      <li key={c.key}>
+                        <span>{c.text}</span>
+                        {c.item && c.item.action.kind !== "claude" && <DoAct d={c.item} className="net-link" />}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              )}
+              {brief && brief.calls.length > 0 && (
+                <div className="calls">
+                  <h3>Calls today</h3>
                   <ol>
                     {brief.calls.map((c, i) => (
                       <li key={`${c.time}-${i}`}>
@@ -179,53 +219,92 @@ export default function Home() {
                       </li>
                     ))}
                   </ol>
-                )}
-              </div>
-              {(brief.digest.length > 0 || brief.rep) && (
+                </div>
+              )}
+              {brief && (brief.digest.length > 0 || brief.rep) && (
                 <details className="brief-more">
                   <summary>More from the brief</summary>
                   {brief.digest.length > 0 && <ul className="digest-list">{brief.digest.map((d, i) => <li key={i}>{d}</li>)}</ul>}
                   {brief.rep && <Rep q={brief.rep.q} a={brief.rep.a} />}
                 </details>
               )}
-            </aside>
-          )}
-
-          <section className="home-li" id="linkedin" aria-labelledby="h-li">
-            <div className="today-sec">
-              <h2 id="h-li">LinkedIn</h2>
-              <span className="muted small">You send these yourself</span>
             </div>
-            <LinkedInPanel />
-          </section>
+          )}
         </div>
+      </section>
 
-        <section className="home-approve" id="approve" aria-labelledby="h-approve">
-          <div className="today-sec">
-            <h2 id="h-approve" tabIndex={-1}>Send</h2>
-            <span className="muted small">Emails, one at a time, by mandate</span>
-          </div>
-          <Deck priorities={priorities} onChanged={prioQ.reload} emailOnly sendEnabled={sendEnabled} />
-          <OlderApproved />
-          <SentLane />
-        </section>
-      </div>
-
-      <section className="home-mandates" id="signed-mandates" aria-labelledby="h-mandates">
-        <div className="today-sec">
-          <h2 id="h-mandates" tabIndex={-1}>Signed mandates</h2>
-          <Link to="/priorities" className="small muted">Edit priorities</Link>
-        </div>
+      <details className="home-mandates" id="signed-mandates">
+        <summary>
+          <span>Priorities and lead lanes</span>
+          <span className="muted small">{priorities.length} active · <Link to="/priorities">edit</Link></span>
+        </summary>
         {prioQ.error && !prioQ.data ? (
           <ErrorBox error={prioQ.error} onRetry={prioQ.reload} />
         ) : prioQ.loading && !prioQ.data ? (
-          <Loading what="Getting your mandates…" />
+          <Loading what="Getting your priorities…" />
         ) : (
           <MandateRows priorities={priorities} progress={prioQ.data?.progress ?? new Map()} onChanged={prioQ.reload} />
         )}
-      </section>
+      </details>
     </div>
     </HandoffContext.Provider>
+  );
+}
+
+type DeskDeal = Pick<Deal, "id" | "deal" | "counterparty" | "line" | "stage" | "ncnda_signed" | "fee_signed" | "next_step" | "next_date">;
+
+/** The desk: deals marked Hot, soonest next step first. Set a deal to Hot on the Deals page to put it here. */
+async function loadDesk(): Promise<DeskDeal[]> {
+  return must(
+    await supabase.from("deals").select("id,deal,counterparty,line,stage,ncnda_signed,fee_signed,next_step,next_date")
+      .eq("heat", "Hot").order("next_date", { ascending: true, nullsFirst: false }).limit(8),
+  ) as unknown as DeskDeal[];
+}
+
+function deskName(d: DeskDeal): string {
+  const n = (d.deal ?? d.counterparty ?? "Deal").split(":")[0].trim();
+  return n.length > 40 ? `${n.slice(0, 38)}…` : n;
+}
+
+function deskWhat(d: DeskDeal): string | null {
+  const i = (d.deal ?? "").indexOf(":");
+  return i > 0 ? d.deal!.slice(i + 1).trim() : null;
+}
+
+function Desk({ q, today }: { q: { data: DeskDeal[] | null; error: unknown; loading: boolean; reload: () => void }; today: string }) {
+  if (q.error && !q.data) return <ErrorBox error={q.error} onRetry={q.reload} />;
+  if (q.loading && !q.data) return <Loading what="Getting the desk…" />;
+  const rows = q.data ?? [];
+  if (rows.length === 0) return <p className="donow-empty">Nothing on the desk. Mark a deal Hot on the Deals page to pin it here.</p>;
+  return (
+    <ul className="desk-grid">
+      {rows.map((d) => {
+        const due = d.next_date ?? null;
+        const late = due != null && due < today;
+        const isToday = due === today;
+        return (
+          <li key={d.id} className={`desk-card${late ? " is-late" : ""}`}>
+            <Link to={`/deals?id=${d.id}`} className="desk-link">
+              <div className="desk-top">
+                <span className="desk-name">{deskName(d)}</span>
+                {d.stage && <span className="desk-stage">{d.stage}</span>}
+              </div>
+              {deskWhat(d) && <p className="desk-what">{deskWhat(d)}</p>}
+              <p className="desk-next">{d.next_step ?? "No next step set."}</p>
+              <div className="desk-foot">
+                <span className={`desk-due${late ? " is-late" : isToday ? " is-today" : ""}`}>
+                  {due == null ? "No date" : late ? `Overdue · ${fmtDate(due)}` : isToday ? "Today" : fmtDate(due)}
+                </span>
+                <span className="desk-gates">
+                  <span className={d.ncnda_signed === "Yes" ? "ok" : "muted"}>NCNDA</span>
+                  <span className={d.fee_signed === "Yes" ? "ok" : "muted"}>Fee</span>
+                </span>
+              </div>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
