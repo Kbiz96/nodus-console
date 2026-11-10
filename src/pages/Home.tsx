@@ -28,6 +28,16 @@ const TABS = ["send", "linkedin", "replies", "questions", "plan"] as const;
 type Tab = (typeof TABS)[number];
 const TAB_KEY = "nodus-home-tab";
 
+/** One button, one chat: plug the buy-side, sell-side and money gaps on every desk deal. Full method in the project doc. */
+const OPERATOR_PROMPT = [
+  "Nodus operator sweep. Follow nodus/00-operating/OPERATOR-SWEEP.md exactly.",
+  "Work every deal on the desk (deals where heat = Hot) plus the active priorities.",
+  "Start from what already exists (outreach incl. parked, lead_candidates, CRM notes, matches, Gmail); never re-email anyone.",
+  "Map each deal's gaps (buyers, sellers, money, blockers), use cross-desk leverage first, then scour live signals from the last 30 days for new buyers, sellers and investors.",
+  "Name decision makers with free Apollo search, queue them in lead_candidates (source operator-sweep) with a sourced hook, and write cross-matches into deal notes.",
+  "Report per deal and the 3 moves that most change the odds this week. End with Done / Needs Kuran.",
+].join(" ");
+
 /** Events that change the live counts: a draft decided, a lead approved or dismissed. */
 const LIVE_EVENTS = ["nodus-outreach-changed", "nodus-leads-changed"] as const;
 
@@ -136,7 +146,10 @@ export default function Home() {
       <section className="desk" aria-labelledby="h-desk">
         <div className="today-sec">
           <h2 id="h-desk">On the desk</h2>
-          <Link to="/deals" className="small muted">All deals</Link>
+          <span className="desk-acts">
+            <AskClaude className="btn primary" prompt={OPERATOR_PROMPT}><Icon.claude />Operator sweep</AskClaude>
+            <Link to="/deals" className="small muted">All deals</Link>
+          </span>
         </div>
         <Desk q={deskQ} today={day} />
       </section>

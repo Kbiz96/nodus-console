@@ -1625,3 +1625,5 @@ details.home-mandates > summary { cursor: pointer; list-style: none; display: fl
 details.home-mandates > summary::-webkit-details-marker { display: none; }
 details.home-mandates > summary > span:first-child::before { content: "+"; display: inline-block; width: 1.1rem; font-family: var(--mono); color: var(--ink-4); }
 details.home-mandates[open] > summary > span:first-child::before { content: "−"; }
+.desk-acts { display: inline-flex; align-items: center; gap: 0.9rem; }
+.desk-acts .btn svg { width: 15px; height: 15px; }
