@@ -9,6 +9,7 @@ import type { Outreach } from "../lib/types.ts";
 import { Icon } from "./Brand.tsx";
 import { AskClaude } from "./PriorityCard.tsx";
 import { toast } from "./Toast.tsx";
+import { GROWTH_ACTIONS, firstComment, postComposeUrl, postTarget, postType, publishSlot } from "../lib/linkedinGrowth.ts";
 
 const HIDE_KEY = "nodus-li-requested";
 
@@ -31,6 +32,8 @@ export function LinkedInPanel() {
   const rows = all.filter((r) => lane === "ALL" || laneOf(r) === lane);
   const { ready, waiting } = splitLinkedIn(rows, notes);
   const comments = rows.filter((r) => r.kind === "comment");
+  // Posts are Kuran's own, not tied to a lane: always shown.
+  const posts = all.filter((r) => r.kind === "post");
   const hide = (id: string, keep = false) => {
     const next = new Set(gone).add(id);
     setGone(next);
@@ -40,11 +43,22 @@ export function LinkedInPanel() {
   const profileOf = (o: Outreach) => safeHref(o.link) ?? safeHref(contactOf(o)?.linkedin);
 
   // The agent button never depends on the drafts loading: Kuran must always be able to start a run.
-  if (error && !data) return <div className="li-panel"><AgentBar lane={lane} setLane={setLane} counts={laneCounts([])} /><p className="muted small">LinkedIn drafts could not be loaded. <button type="button" className="link-btn" onClick={reload}>Try again</button></p></div>;
-  if (!data) return <div className="li-panel"><AgentBar lane={lane} setLane={setLane} counts={laneCounts([])} /><p className="muted small">Checking LinkedIn…</p></div>;
+  if (error && !data) return <div className="li-panel"><GrowthBar /><AgentBar lane={lane} setLane={setLane} counts={laneCounts([])} /><p className="muted small">LinkedIn drafts could not be loaded. <button type="button" className="link-btn" onClick={reload}>Try again</button></p></div>;
+  if (!data) return <div className="li-panel"><GrowthBar /><AgentBar lane={lane} setLane={setLane} counts={laneCounts([])} /><p className="muted small">Checking LinkedIn…</p></div>;
 
   return (
     <div className="li-panel">
+      <GrowthBar />
+      {posts.length > 0 && (
+        <div className="li-wait">
+          <div className="li-wait-head">
+            <p><b>{fmtNumber(posts.length)}</b> {posts.length === 1 ? "post" : "posts"} to publish</p>
+          </div>
+          <ul className="li-list">
+            {posts.map((o) => <PostRow key={o.id} o={o} onDone={() => hide(o.id, true)} />)}
+          </ul>
+        </div>
+      )}
       <AgentBar lane={lane} setLane={setLane} counts={laneCounts(all)} />
       {comments.length > 0 && (
         <div className="li-wait">
@@ -271,6 +285,70 @@ function CommentRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
       <div className="li-acts">
         <button type="button" className="btn small" onClick={copy}>{post ? (exact ? "Copy & open post" : "Copy & find post") : "Copy"}<Icon.external /></button>
         <button type="button" className="btn small primary" disabled={busy} onClick={() => void done()}>{busy ? "Saving…" : "Commented"}</button>
+      </div>
+    </li>
+  );
+}
+
+// ---------- LinkedIn growth (audit 10 Nov) ----------
+
+/** One button per growth job. Each opens Claude with the job typed in; drafts come back to this panel. */
+function GrowthBar() {
+  return (
+    <div className="li-agent li-grow">
+      <p className="li-grow-head"><b>Grow on LinkedIn</b> <span className="muted small">Press one, then Enter in Claude (Chrome and the Claude extension open). You post and send everything yourself.</span></p>
+      <div className="li-grow-grid">
+        {GROWTH_ACTIONS.map((a) => (
+          <div key={a.key} className="li-grow-cell">
+            <AskClaude prompt={a.prompt} className="btn small">{a.label}</AskClaude>
+            <span className="muted small">{a.when}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function PostRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const page = postTarget(o) === "page";
+  const first = firstComment(o.note);
+  const slot = publishSlot(o.note);
+  const type = postType(o.note);
+  const meta = [type?.toLowerCase(), slot].filter(Boolean).join(" · ");
+  const copy = () => copyAndOpen(o.body ?? "", postComposeUrl(o), page
+    ? "Copied and opened the Nodus page. Start a post, paste, publish, then press Posted."
+    : "Copied and opened LinkedIn. Start a post, paste, publish, then press Posted.");
+  const copyFirst = () => {
+    const ok = copyNow(first ?? "");
+    toast(ok ? "First comment copied. Add it under your post straight after publishing." : "Your browser would not copy it, so select the text and copy it by hand.", ok);
+  };
+  const done = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (o.status !== "manual") await outreachDecide(o.id, "approve");
+      await outreachMarkSent(o.id);
+      outreachChanged();
+      toast("Marked posted. Reply to every comment in the first hour.");
+      onDone();
+    } catch (e) {
+      toast(friendlyError(e), false);
+      setBusy(false);
+    }
+  };
+  return (
+    <li className="li-row">
+      <div className="li-who">
+        <strong>{page ? "Nodus page" : "Your profile"}</strong>
+        {meta && <span className="muted"> · {meta}</span>}
+      </div>
+      <p className="li-msg">{o.body || "(no text)"}</p>
+      {first && <p className="muted small li-post">First comment: {first}</p>}
+      <div className="li-acts">
+        <button type="button" className="btn small" onClick={copy}>Copy & open LinkedIn<Icon.external /></button>
+        {first && <button type="button" className="btn small" onClick={copyFirst}>Copy first comment</button>}
+        <button type="button" className="btn small primary" disabled={busy} onClick={() => void done()}>{busy ? "Saving…" : "Posted"}</button>
       </div>
     </li>
   );
