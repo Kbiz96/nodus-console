@@ -95,7 +95,7 @@ Nodus database on Supabase.
   one company at a time for first touches (no other email to that domain in 90 days); the daily cap (secret
   `SEND_DAILY_CAP`, default 50, from UK midnight); the From address is verified in Gmail. Send all waits 4 seconds
   between emails and stops on any problem that would stop them all.
-- Secrets (Supabase → Edge Functions → Secrets): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`, `GMAIL_REFRESH_TOKEN`
+- Secrets (Supabase → Edge Functions → Secrets): `GMAIL_CLIENT_ID`, `GMAIL_CLIENT_SECRET`; the refresh token is saved by Connect Gmail (`nodus-gmail-callback`) in `gmail_connection`
   (Google OAuth client on the nodus.equipment Workspace, internal app, scopes `gmail.modify` and
   `gmail.settings.basic`). Setup steps: `docs/gmail-setup.md`.
 - **Apollo** (`nodus-apollo`) is for finding and enriching people only (Find, Enrich, credits, activity). Its `send`

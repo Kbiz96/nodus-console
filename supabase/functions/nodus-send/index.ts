@@ -20,7 +20,7 @@ import {
 } from "./mail.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
-const SETUP = "Connect Gmail: add GMAIL_CLIENT_ID, GMAIL_CLIENT_SECRET and GMAIL_REFRESH_TOKEN in Supabase → Edge Functions → Secrets.";
+const SETUP = "Gmail is not connected: add GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET in Supabase secrets, then use Connect Gmail.";
 const BLOCKED_STAGES = ["replied", "meeting", "declined", "opted out", "bounced"];
 const CORS = {
   "access-control-allow-origin": "*",
@@ -37,19 +37,33 @@ class GmailError extends Error {
 
 // ---------- Gmail ----------
 
+const CALLBACK = "https://tfsioiuvmyuqgajxtklv.supabase.co/functions/v1/nodus-gmail-callback";
+const admin = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
+/** The refresh token: the one saved by Connect Gmail (gmail_connection) first, else the GMAIL_REFRESH_TOKEN secret. */
+let refresh: { value: string | null; at: number } | null = null;
+async function refreshToken(): Promise<string | null> {
+  if (refresh && refresh.at > Date.now() - 60_000) return refresh.value;
+  const { data } = await admin().from("gmail_connection").select("refresh_token").eq("id", 1).maybeSingle();
+  refresh = { value: (data?.refresh_token as string | undefined) ?? Deno.env.get("GMAIL_REFRESH_TOKEN") ?? null, at: Date.now() };
+  return refresh.value;
+}
+
 let token: { value: string; until: number } | null = null;
 async function accessToken(): Promise<string> {
   if (token && token.until > Date.now() + 60_000) return token.value;
+  const rt = await refreshToken();
+  if (!rt) throw new GmailError("gmail_not_connected", 0, "No Gmail key yet: use Connect Gmail.");
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "content-type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       client_id: Deno.env.get("GMAIL_CLIENT_ID")!, client_secret: Deno.env.get("GMAIL_CLIENT_SECRET")!,
-      refresh_token: Deno.env.get("GMAIL_REFRESH_TOKEN")!, grant_type: "refresh_token",
+      refresh_token: rt, grant_type: "refresh_token",
     }),
   });
   const d = await res.json().catch(() => ({})) as { access_token?: string; expires_in?: number; error?: string; error_description?: string };
-  if (!res.ok || !d.access_token) throw new GmailError("gmail_auth", res.status, d.error_description ?? d.error ?? "token refused");
+  if (!res.ok || !d.access_token) throw new GmailError("gmail_auth", res.status, `${d.error ?? "token refused"}${d.error_description ? `: ${d.error_description}` : ""}`);
   token = { value: d.access_token, until: Date.now() + (d.expires_in ?? 3000) * 1000 };
   return token.value;
 }
@@ -83,7 +97,22 @@ async function verifiedFrom(): Promise<string[]> {
   return list;
 }
 
-const connected = () => Boolean(Deno.env.get("GMAIL_CLIENT_ID") && Deno.env.get("GMAIL_CLIENT_SECRET") && Deno.env.get("GMAIL_REFRESH_TOKEN"));
+const connected = () => Boolean(Deno.env.get("GMAIL_CLIENT_ID") && Deno.env.get("GMAIL_CLIENT_SECRET"));
+
+/** Connect Gmail: a one-time Google consent link for info@nodus.equipment. Google returns to nodus-gmail-callback. */
+async function connect(email: string) {
+  if (!connected()) return fail("gmail_not_connected", { message: SETUP });
+  const state = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, "");
+  const { error } = await admin().from("gmail_oauth_state").insert({ state, created_by: email });
+  if (error) return fail("db_error", { message: error.message });
+  const q = new URLSearchParams({
+    client_id: Deno.env.get("GMAIL_CLIENT_ID")!, redirect_uri: CALLBACK, response_type: "code", access_type: "offline", prompt: "consent",
+    scope: "https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/gmail.settings.basic",
+    login_hint: FROM_DEFAULT, state,
+  });
+  refresh = null; token = null; aliases = null;
+  return json(200, { ok: true, url: `https://accounts.google.com/o/oauth2/v2/auth?${q}` });
+}
 const dailyCap = () => Math.max(1, Number(Deno.env.get("SEND_DAILY_CAP") ?? "50") || 50);
 
 async function sentToday(db: SupabaseClient): Promise<number> {
@@ -232,6 +261,7 @@ Deno.serve(async (req) => {
   try { b = await req.json(); } catch { return fail("bad_request", { message: "JSON body expected" }); }
   try {
     if (b.action === "status") return await status(db);
+    if (b.action === "connect") return await connect(u.user.email);
     if (b.action === "send") {
       if (!connected()) return fail("gmail_not_connected", { message: SETUP });
       return await send(db, { outreach_id: b.outreach_id as string | undefined, from: b.from as string | undefined, force: b.force === true });
