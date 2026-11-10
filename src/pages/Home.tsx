@@ -34,7 +34,7 @@ const OPERATOR_PROMPT = [
   "Work every deal on the desk (deals where heat = Hot) plus the active priorities.",
   "Start from what already exists (outreach incl. parked, lead_candidates, CRM notes, matches, Gmail); never re-email anyone.",
   "Map each deal's gaps (buyers, sellers, money, blockers), use cross-desk leverage first, then scour live signals from the last 30 days for new buyers, sellers and investors.",
-  "Name decision makers with free Apollo search, queue them in lead_candidates (source operator-sweep) with a sourced hook, and write cross-matches into deal notes.",
+  "Name decision makers with free Apollo search, then write the outbound for each and send it in the same run (non-capital from info@ now; capital saved as approved for one press in Send). Log everything in the CRM and write cross-matches into deal notes.",
   "Report per deal and the 3 moves that most change the odds this week. End with Done / Needs Kuran.",
 ].join(" ");
 
