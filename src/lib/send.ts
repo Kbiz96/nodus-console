@@ -11,7 +11,7 @@ export interface SendFail {
 }
 export interface SendOk {
   ok: true; from: string; lane: "capital" | "other"; via: "draft" | "row"; message_id: string; thread_id: string | null;
-  sent_today: number; cap: number; warning?: string;
+  sent_today: number; cap: number; warning?: string; already_sent?: boolean;
 }
 export interface SendStatus {
   ok: true; connected: boolean; verified?: string[]; missing?: string[]; cap: number; sent_today: number; message?: string; reason?: string;

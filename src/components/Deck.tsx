@@ -313,7 +313,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
             heldText = ` Held ${n} other${n === 1 ? "" : "s"} at ${clash?.domain} (second contact at same firm).`;
           }
         }
-        const text = `${sentText(o.to_name, r.from)}${heldText}${r.warning ? ` ${r.warning}` : ""}`;
+        const text = `${(r.already_sent ? `${o.to_name || "This email"} was already sent from Gmail, so it is marked as sent.` : sentText(o.to_name, r.from))}${heldText}${r.warning ? ` ${r.warning}` : ""}`;
         onDone({ ok: true, text }, false, gone);
         if (gone.length) toast(heldText.trim(), true, { ms: 9000, actions: [{ label: "Undo hold", primary: true, run: () => onUndo(gone) }] });
       } else if (what === "skip") {

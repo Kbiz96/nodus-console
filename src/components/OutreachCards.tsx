@@ -41,7 +41,7 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
       if ((what === "approve" || what === "send") && dirty) await outreachDecide(o.id, "edit", isEmail ? subject : o.subject, body);
       if (what === "send") {
         const r = await gmailSend(o.id);
-        setMsg(r.ok ? { ok: true, text: `${sentText(o.to_name, r.from)}${r.warning ? ` ${r.warning}` : ""}` } : { ok: false, text: sendFailText(r).text });
+        setMsg(r.ok ? { ok: true, text: `${(r.already_sent ? `${o.to_name || "This email"} was already sent from Gmail, so it is marked as sent.` : sentText(o.to_name, r.from))}${r.warning ? ` ${r.warning}` : ""}` } : { ok: false, text: sendFailText(r).text });
         if (r.ok) { outreachChanged(); onChanged(); }
         return;
       }

@@ -7,12 +7,17 @@
 //                                        with its From set to the right address. Otherwise a message is built from the
 //                                        row, in its Gmail thread when there is one. Marks the row sent.
 //   status {}                            Is Gmail connected, which aliases are verified, sent today against the cap.
+//   connect {}                           A one-time Google consent link; Google returns to nodus-gmail-callback,
+//                                        which saves the refresh token in public.gmail_connection.
+//   sync {}                              Draft rows whose Gmail draft Kuran already sent from Gmail are marked sent.
+// Never sends twice: if the row's Gmail draft was already sent (or is gone and Sent has a message to that address in
+// the last 30 days), the row is marked sent and nothing goes out.
 // Checks before every send: draft/approved email with an address; not do-not-contact or already in conversation;
 // one company at a time for first touches (no other email sent to that domain in 90 days unless force);
 // the daily cap (SEND_DAILY_CAP, default 50, counted from UK midnight); the From alias is verified in Gmail.
 // Auth: the gateway verifies the JWT; this function then checks the console allow-list (nodus_is_kuran) and does every
-// read and write as that user, under row-level security. Gmail credentials come from the secrets GMAIL_CLIENT_ID,
-// GMAIL_CLIENT_SECRET and GMAIL_REFRESH_TOKEN (scopes gmail.modify and gmail.settings.basic). Never logged or returned.
+// read and write as that user, under row-level security. Gmail credentials: GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET
+// secrets, refresh token from gmail_connection (else the GMAIL_REFRESH_TOKEN secret). Never logged or returned.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
 import {
   ALLOWED_FROM, FROM_CAPITAL, FROM_DEFAULT, GENERIC_DOMAINS, addressIn, buildMessage, domainOf, fromFor, pickLane, rewriteFrom,
@@ -121,6 +126,53 @@ async function sentToday(db: SupabaseClient): Promise<number> {
   return count ?? 0;
 }
 
+// ---------- already sent? ----------
+
+/** The latest message in Sent to this address (in this thread when known), within 30 days. */
+async function sentTo(to: string, threadId: string | null): Promise<{ id: string; threadId: string; at: string; from: string | null } | null> {
+  const q = new URLSearchParams({ q: `in:sent to:${to} newer_than:30d`, maxResults: "5" });
+  const r = await gmail(`/messages?${q}`);
+  const list = (r.messages ?? []) as { id: string; threadId: string }[];
+  const hit = (threadId && list.find((m) => m.threadId === threadId)) || list[0];
+  if (!hit) return null;
+  const m = await gmail(`/messages/${hit.id}?format=metadata&metadataHeaders=From`);
+  const hs = ((m.payload as { headers?: { name: string; value: string }[] } | undefined)?.headers ?? []);
+  return {
+    id: hit.id, threadId: hit.threadId, at: new Date(Number(m.internalDate ?? Date.now())).toISOString(),
+    from: addressIn(hs.find((x) => x.name.toLowerCase() === "from")?.value),
+  };
+}
+
+async function markSent(db: SupabaseClient, o: { id: string; note: string | null; approved_at: string | null }, msgId: string, threadId: string, at: string, why: string) {
+  await db.from("outreach")
+    .update({ status: "sent", approved_at: o.approved_at ?? at, sent_at: at, thread_id: threadId, note: `${o.note ?? ""}${o.note ? " " : ""}| gmail:${msgId} | ${why}` })
+    .eq("id", o.id).in("status", ["draft", "approved"]);
+}
+
+/** Sync: draft rows whose Gmail draft is gone because Kuran sent it from Gmail are marked sent. Sends nothing. */
+async function syncDrafts(db: SupabaseClient) {
+  const { data } = await db.from("outreach").select("id,to_email,thread_id,note,approved_at,gmail_draft_id")
+    .eq("channel", "email").in("status", ["draft", "approved"]).not("gmail_draft_id", "is", null).limit(200);
+  let checked = 0, marked = 0;
+  const done: string[] = [];
+  for (const o of (data ?? []) as { id: string; to_email: string | null; thread_id: string | null; note: string | null; approved_at: string | null; gmail_draft_id: string }[]) {
+    checked++;
+    let gone = false;
+    try {
+      const d = await gmail(`/drafts/${encodeURIComponent(o.gmail_draft_id)}?format=minimal`);
+      const labels = ((d.message as { labelIds?: string[] } | undefined)?.labelIds) ?? [];
+      gone = labels.includes("SENT") || !labels.includes("DRAFT");
+    } catch (e) {
+      if (e instanceof GmailError && (e.reason === "gmail_not_found" || /not a draft/i.test(e.message))) gone = true;
+      else throw e;
+    }
+    if (!gone || !o.to_email) continue;
+    const prior = await sentTo(o.to_email.trim(), o.thread_id);
+    if (prior) { await markSent(db, o, prior.id, prior.threadId, prior.at, "already sent from Gmail (sync)"); marked++; done.push(o.to_email); }
+  }
+  return json(200, { ok: true, checked, marked, emails: done });
+}
+
 // ---------- send ----------
 
 type Row = {
@@ -172,20 +224,31 @@ async function send(db: SupabaseClient, b: { outreach_id?: string; from?: string
   if (!okFrom.includes(from)) return fail("alias_not_verified", { from, verified: okFrom });
 
   // Send the Gmail draft when there is one (Kuran's edits in Gmail count), else build it from the row.
+  // Never send twice: a draft Kuran already sent from Gmail is marked sent here instead.
   let sent: { id?: string; threadId?: string } | null = null;
   let via = "row";
   if (o.gmail_draft_id) {
+    let gone = false;
     try {
       const d = await gmail(`/drafts/${encodeURIComponent(o.gmail_draft_id)}?format=raw`);
-      const msg = d.message as { raw?: string; threadId?: string } | undefined;
-      if (msg?.raw) {
+      const msg = d.message as { id?: string; raw?: string; threadId?: string; labelIds?: string[] } | undefined;
+      if (msg?.labelIds?.includes("SENT") || (msg?.labelIds && !msg.labelIds.includes("DRAFT"))) gone = true;
+      else if (msg?.raw) {
         const raw = rewriteFrom(msg.raw, from);
         await gmail(`/drafts/${encodeURIComponent(o.gmail_draft_id)}`, { method: "PUT", body: { id: o.gmail_draft_id, message: { raw, threadId: msg.threadId } } });
         sent = await gmail("/drafts/send", { method: "POST", body: { id: o.gmail_draft_id } }) as { id?: string; threadId?: string };
         via = "draft";
       }
     } catch (e) {
-      if (!(e instanceof GmailError && e.reason === "gmail_not_found")) throw e; // draft gone: fall back to the row
+      if (e instanceof GmailError && (e.reason === "gmail_not_found" || /not a draft/i.test(e.message))) gone = true;
+      else throw e;
+    }
+    if (gone) {
+      const prior = await sentTo(to, o.thread_id);
+      if (prior) {
+        await markSent(db, o, prior.id, prior.threadId, prior.at, "already sent from Gmail");
+        return json(200, { ok: true, already_sent: true, from: prior.from, message_id: prior.id, thread_id: prior.threadId, sent_today: today, cap });
+      }
     }
   }
   if (!sent) {
@@ -262,6 +325,7 @@ Deno.serve(async (req) => {
   try {
     if (b.action === "status") return await status(db);
     if (b.action === "connect") return await connect(u.user.email);
+    if (b.action === "sync") return await syncDrafts(db);
     if (b.action === "send") {
       if (!connected()) return fail("gmail_not_connected", { message: SETUP });
       return await send(db, { outreach_id: b.outreach_id as string | undefined, from: b.from as string | undefined, force: b.force === true });
