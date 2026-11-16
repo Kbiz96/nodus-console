@@ -1336,6 +1336,12 @@ a.lead-hook:hover { color: var(--mint); }
 .li-wait-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
 .li-wait-head p { margin: 0; color: var(--ink-3); font-size: 14px; }
 .li-wait-head b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.li-head-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.6rem; }
+.li-sort { display: inline-flex; align-items: center; gap: 0.4rem; }
+.li-sort select { background: rgba(12, 18, 17, 0.9); color: var(--ink); border: 1px solid var(--line); font: inherit; font-size: 13px; padding: 0.3rem 0.45rem; min-height: 32px; }
+.li-sort select:focus-visible { outline: 2px solid var(--teal); outline-offset: 1px; }
+.li-meta { margin: -0.2rem 0 0; color: var(--ink-4); font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.02em; }
+@media (max-width: 639px) { .li-sort select { min-height: 44px; } }
 
 /* approve deck on Today */
 details.deck-why { display: block; border-top: 1px solid var(--line-soft); padding-top: 0.55rem; }

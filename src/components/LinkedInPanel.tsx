@@ -10,8 +10,48 @@ import { Icon } from "./Brand.tsx";
 import { AskClaude } from "./PriorityCard.tsx";
 import { toast } from "./Toast.tsx";
 import { GROWTH_ACTIONS, firstComment, postComposeUrl, postTarget, postType, publishSlot } from "../lib/linkedinGrowth.ts";
+import { fitOf, isSortKey, laneTag, postDate, shortDay, sortLinkedIn, sortOptions, type LiListKind, type LiSortKey } from "../lib/liSort.ts";
 
 const HIDE_KEY = "nodus-li-requested";
+
+/** The sort Kuran last picked for a list, remembered in this browser. Newest first by default. */
+function useSort(kind: LiListKind): [LiSortKey, (k: LiSortKey) => void] {
+  const key = `nodus-li-sort-${kind}`;
+  const [v, setV] = useState<LiSortKey>(() => {
+    const saved = remember(key);
+    return isSortKey(saved, kind) ? saved : "newest";
+  });
+  return [v, (k) => { setV(k); remember(key, k); }];
+}
+
+function SortPick({ kind, value, onChange }: { kind: LiListKind; value: LiSortKey; onChange: (k: LiSortKey) => void }) {
+  const label = kind === "dm" ? "Sort DMs" : kind === "comment" ? "Sort comments" : "Sort connection notes";
+  return (
+    <label className="li-sort">
+      <span className="muted small">Sort</span>
+      <select aria-label={label} value={value} onChange={(e) => onChange(e.target.value as LiSortKey)}>
+        {sortOptions(kind).map((o) => <option key={o.k} value={o.k}>{o.label}</option>)}
+      </select>
+    </label>
+  );
+}
+
+/** Drafted date, lane and fit (or, for comments, when the post went up), so the sort is visible on every row. */
+function Meta({ o, comment = false }: { o: Outreach; comment?: boolean }) {
+  const bits: string[] = [];
+  const drafted = shortDay(o.created_at);
+  if (comment) {
+    const posted = shortDay(postDate(o));
+    if (posted) bits.push(`Posted ${posted}`);
+  } else {
+    const lane = laneTag(o.note);
+    if (lane) bits.push(lane.charAt(0) + lane.slice(1).toLowerCase());
+    const fit = fitOf(o.note);
+    if (fit) bits.push(`Fit ${fit}`);
+  }
+  if (drafted) bits.push(`Drafted ${drafted}`);
+  return bits.length ? <p className="li-meta">{bits.join(" · ")}</p> : null;
+}
 
 function hiddenIds(): Set<string> {
   try { return new Set(JSON.parse(remember(HIDE_KEY) ?? "[]") as string[]); } catch { return new Set(); }
@@ -28,10 +68,15 @@ export function LinkedInPanel() {
   const notes = useMemo(() => new Map([...(data?.contacts ?? new Map<string, LiContact>()).values()].map((c) => [c.id, c.notes])), [data]);
   const [lane, setLane] = useState<Lane>("ALL");
   const [showComments, setShowComments] = useState(true);
+  const [dmSort, setDmSort] = useSort("dm");
+  const [noteSort, setNoteSort] = useSort("note");
+  const [commentSort, setCommentSort] = useSort("comment");
   const all = (data?.rows ?? []).filter((r) => !gone.has(r.id));
   const rows = all.filter((r) => lane === "ALL" || laneOf(r) === lane);
-  const { ready, waiting } = splitLinkedIn(rows, notes);
-  const comments = rows.filter((r) => r.kind === "comment");
+  const split = splitLinkedIn(rows, notes);
+  const ready = sortLinkedIn(split.ready, dmSort);
+  const waiting = sortLinkedIn(split.waiting, noteSort);
+  const comments = sortLinkedIn(rows.filter((r) => r.kind === "comment"), commentSort);
   // Posts are Kuran's own, not tied to a lane: always shown.
   const posts = all.filter((r) => r.kind === "post");
   const hide = (id: string, keep = false) => {
@@ -64,9 +109,12 @@ export function LinkedInPanel() {
         <div className="li-wait">
           <div className="li-wait-head">
             <p><b>{fmtNumber(comments.length)}</b> posts to comment on</p>
-            <button type="button" className="btn small" aria-expanded={showComments} onClick={() => setShowComments((v) => !v)}>
-              {showComments ? "Hide comments" : "Show comments"}
-            </button>
+            <div className="li-head-acts">
+              {showComments && <SortPick kind="comment" value={commentSort} onChange={setCommentSort} />}
+              <button type="button" className="btn small" aria-expanded={showComments} onClick={() => setShowComments((v) => !v)}>
+                {showComments ? "Hide comments" : "Show comments"}
+              </button>
+            </div>
           </div>
           {showComments && (
             <ul className="li-list">
@@ -78,19 +126,28 @@ export function LinkedInPanel() {
       {ready.length === 0 ? (
         <p className="li-none">No DMs ready for people you are connected to.</p>
       ) : (
+        <div className="li-wait">
+        <div className="li-wait-head">
+          <p><b>{fmtNumber(ready.length)}</b> {ready.length === 1 ? "DM" : "DMs"} ready to send</p>
+          <SortPick kind="dm" value={dmSort} onChange={setDmSort} />
+        </div>
         <ul className="li-list">
           {ready.map((o) => (
             <ReadyRow key={o.id} o={o} profile={profileOf(o)} onSent={() => hide(o.id)} />
           ))}
         </ul>
+        </div>
       )}
       {waiting.length > 0 && (
         <div className="li-wait">
           <div className="li-wait-head">
             <p><b>{fmtNumber(waiting.length)}</b> waiting for connection (send a connection note)</p>
-            <button type="button" className="btn small" aria-expanded={showNotes} onClick={() => setShowNotes((v) => !v)}>
-              {showNotes ? "Hide connection notes" : "Show connection notes"}
-            </button>
+            <div className="li-head-acts">
+              {showNotes && <SortPick kind="note" value={noteSort} onChange={setNoteSort} />}
+              <button type="button" className="btn small" aria-expanded={showNotes} onClick={() => setShowNotes((v) => !v)}>
+                {showNotes ? "Hide connection notes" : "Show connection notes"}
+              </button>
+            </div>
           </div>
           {showNotes && (
             <ul className="li-list">
@@ -170,6 +227,7 @@ function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null;
   return (
     <li className="li-row">
       <Who o={o} />
+      <Meta o={o} />
       {whyLine(o.note) && <p className="muted small li-post">Why them: {whyLine(o.note)}</p>}
       <p className="li-msg">{o.body ? withSignoff(o.body) : "(no text)"}</p>
       <div className="li-acts">
@@ -199,6 +257,7 @@ function NoteRow({ o, contact, profile, onDone }: { o: Outreach; contact: LiCont
   return (
     <li className="li-row">
       <Who o={o} />
+      <Meta o={o} />
       {note ? <p className="li-msg li-note">{note}</p> : <p className="li-msg muted">No connection note drafted. A short hello works.</p>}
       <div className="li-acts">
         <button type="button" className="btn small" disabled={!note} onClick={copy}>{profile ? "Copy & open profile" : "Copy"}<Icon.external /></button>
@@ -280,6 +339,7 @@ function CommentRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
   return (
     <li className="li-row">
       <Who o={o} />
+      <Meta o={o} comment />
       {opening && <p className="muted small li-post">On the post: “{opening}…”</p>}
       <p className="li-msg">{o.body || "(no text)"}</p>
       <div className="li-acts">

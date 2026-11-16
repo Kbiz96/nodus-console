@@ -14,7 +14,7 @@ Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works
   ("Find in Gmail"). **Approve**: the one-at-a-time deck, emails only, research card folded under "Why this person".
   **LinkedIn**: a DM shows only when the research note says CONNECTED or the contact's notes say "LinkedIn connected";
   everyone else is a count with their connection notes (text after "If not connected, send this note first:") one tap
-  away, with Copy, Open profile and Request sent. **Signed mandates**: one line each (rank, paperwork, next step, overdue
+  away, with Copy, Open profile and Request sent. DMs, comments and connection notes each have a Sort menu (newest first by default; also oldest, freshest post, best fit, lane, name, company; `src/lib/liSort.ts`, unit-tested), remembered per browser, and every row shows lane, fit and the day it was drafted. **Signed mandates**: one line each (rank, paperwork, next step, overdue
   flag), opening to the full card without Claude buttons. Rules in `src/lib/today.ts` (unit-tested).
 - **Pipeline** (`#/pipeline`): open deals and warm contacts (Replied, Meeting, Qualified, NCNDA) in one list, stalled
   first (deal `next_date` today or past; contact `next_follow_up` past or empty), most overdue first. Each row: who,
