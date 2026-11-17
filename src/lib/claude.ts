@@ -22,7 +22,11 @@ export const CHECK_FIRST =
   "Qualify before you show me anyone (rule 15): read the client's own documents first (their checklist, emails, call notes), " +
   "work out how they actually buy and who would realistically sell to them, then research each prospect behind the scenes. " +
   "Keep only real businesses with evidence they fit this mandate (model, scale, timing, geography, credit, no conflict); " +
-  "give one line of evidence and the gap to test for each, and drop the rest.";
+  "give one line of evidence and the gap to test for each, and drop the rest. " +
+  // Kuran's instruction (17 Nov, rulebook rule 16): Apollo's own outbound method.
+  "Score fit and timing separately (rule 16): fit decides whether someone belongs on the list, timing signals " +
+  "(funding, new compute lead, hiring, GPU shortage) decide when to write. Verified work emails only, nobody already " +
+  "in the CRM or Apollo, and state the contact and credit cap before any Apollo spend.";
 
 export function withCheckFirst(text: string): string {
   if (!text.startsWith("Nodus command") || text.includes(CHECK_FIRST)) return text;
