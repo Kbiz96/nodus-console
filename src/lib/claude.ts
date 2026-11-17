@@ -17,7 +17,12 @@ export const CLAUDE_CUT_NOTE =
 export const CHECK_FIRST =
   "Before doing anything: search what has already been done on this (CRM contacts, notes and crm_actions, deals, " +
   "every outreach row for these people or companies including parked ones, project docs, Gmail threads and past chats). " +
-  "Reuse or improve what exists instead of starting again, never duplicate a message, and tell me in one line what you found.";
+  "Reuse or improve what exists instead of starting again, never duplicate a message, and tell me in one line what you found. " +
+  // Kuran's standing rule (17 Nov, rulebook rule 15): qualify every prospect against the mandate before it reaches him.
+  "Qualify before you show me anyone (rule 15): read the client's own documents first (their checklist, emails, call notes), " +
+  "work out how they actually buy and who would realistically sell to them, then research each prospect behind the scenes. " +
+  "Keep only real businesses with evidence they fit this mandate (model, scale, timing, geography, credit, no conflict); " +
+  "give one line of evidence and the gap to test for each, and drop the rest.";
 
 export function withCheckFirst(text: string): string {
   if (!text.startsWith("Nodus command") || text.includes(CHECK_FIRST)) return text;

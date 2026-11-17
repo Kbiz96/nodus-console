@@ -42,3 +42,9 @@ test("every Nodus command carries the check-what's-been-done line, once", async 
   assert.equal(withCheckFirst("hello"), "hello");
   assert.ok(decodeURIComponent(claudeUrl("Nodus command: go")).includes("Before doing anything"));
 });
+
+test("every Nodus command carries the rule 15 qualification line", async () => {
+  const { withCheckFirst } = await import("../src/lib/claude.ts");
+  const t = withCheckFirst("Nodus command (priority 1: X). Find suppliers.");
+  assert.ok(t.includes("Qualify before you show me anyone (rule 15)"));
+});
