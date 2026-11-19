@@ -12,7 +12,7 @@ export const PAGE_COMPOSE_URL = `https://www.linkedin.com/company/${NODUS_PAGE_I
 
 const HEAD = (job: string) =>
   `Nodus command: LinkedIn growth, ${job}. Use the nodus-linkedin-agent skill rules in my Chrome (Claude in Chrome), ` +
-  "and read nodus/30-outreach/LINKEDIN-STANDARD.md first (sections 1 to 8; section 8 is the growth playbook).";
+  "and read nodus/30-outreach/LINKEDIN-STANDARD.md (v3) first, sections 1 to 9; section 9 is what worked on 18 Nov.";
 
 const SAFE =
   "Read-only and human-paced: never click Like, Comment, Connect, Message, Post or Send; at least 15 s between pages. " +
@@ -33,30 +33,32 @@ export const GROWTH_ACTIONS: GrowthAction[] = [
   {
     key: "comment",
     label: "Comment now",
-    when: "Daily, before you post. 10 fresh posts to comment on.",
+    when: "Daily, before you post. 15 fresh posts by the biggest voices.",
     prompt: [
       HEAD("comment now"),
-      "Find 10 posts published in the last 3 hours (never older than 24 hours) by the section 8 comment watchlist first, then other voices in my lanes " +
-        "(data-centre developers, neoclouds and GPU clouds, infrastructure funds, family offices, GPU and private-credit lenders). Skip any post I have already commented on.",
-      "Draft one comment each to section 5: 2 to 3 sentences, one specific operator point, no Nodus mention. Vary the openings: never start with their name followed by " +
-        "'is the right lens/answer/exercise', and no two comments share an opening shape.",
+      "Find 15 posts by the biggest voices in my lanes (data centres, AI infrastructure, GPUs and neoclouds, energy for compute, infrastructure capital): " +
+        "authors with 5k+ followers (ideally 20k+) or posts already gathering reactions fast. Under 3 hours old where possible, never over 12. " +
+        "Watchlist first (section 8), then content searches sorted by latest. Skip posts I have already commented on, broker posts and anyone excluded in section 6.",
+      "Draft one comment each to section 5: 2 to 3 sentences that pick up their exact claim and add one specific, non-obvious point from what we see on our desk " +
+        "(delivery windows, optics and power lead times, financing terms, where demand sits), never naming a client. No pitch, no Nodus mention, no template openings.",
       "Exact post link is mandatory (copy-link method in the skill). Save each as outreach kind 'comment', channel 'linkedin', status 'draft', origin 'linkedin', " +
-        "to_name = author, link = exact post link, note 'LI: COMMENT · posted <n>h ago · WHY: <their point> · Find the post starting: \"<first 8 words>\"'. Freshest first. 25 pages max.",
+        "to_name = author, link = exact post link, note 'LI: COMMENT · posted <n>h ago · reach <followers> · WHY: <their point> · Find the post starting: \"<first 8 words>\"'. 25 pages max.",
       SAFE,
     ].join("\n"),
   },
   {
     key: "network",
     label: "Grow network",
-    when: "Daily. 20 ICP people to connect with, notes ready.",
+    when: "Daily. 30 people matched to live requirements, notes ready.",
     prompt: [
       HEAD("grow my network"),
-      "Find 20 people to connect with today, ICP only: infrastructure-fund and family-office investment leads, data-centre developers and operators (sweet spot 5 to 100 MW), " +
-        "neocloud and GPU-cloud founders and capacity heads, GPU and private-credit lenders. UK, Europe, GCC, US. 2nd-degree with mutuals first, active on LinkedIn in the last 30 days.",
-      "Exclude: mega-institutions and sovereigns, anyone in my LinkedIn inbox, the CRM past New, my friends, and more than one person per company.",
-      "For each, one real reason from their profile or a recent post, then a connection note of 200 characters or fewer per section 4, ending 'Kuran'. No links, no pitch.",
-      "Save as outreach kind 'connect', channel 'linkedin', status 'draft', origin 'linkedin', link = profile URL, body = the note, note " +
-        "'LI: <LANE> · 2nd · WHY: <reason> · If not connected, send this note first: <note>'. Upsert crm_contacts (linkedin = profile URL, source 'linkedin-agent'). 30 pages max.",
+      "Read the active priorities and mandates in Supabase first. Find 30 people who can move one of them now: GPU capacity holders for our rental requirements, " +
+        "AI companies that need the B300 capacity we can place, GPU lenders for the deals that need debt, investors and neoclouds for the powered campus. " +
+        "Sources: 2nd-degree LinkedIn searches by those keywords, CRM rows with a LinkedIn URL never contacted, and Apollo only within the credit cap (stop when credits run out).",
+      "Exclude per section 6: anyone or any company already in the console outreach (any status, including skipped and parked), my inbox, friends, mega-institutions, and invites already pending.",
+      "For each, a connection note of 200 characters or fewer per section 4 that names the live requirement it matches (blind), ending 'Kuran'. No links. " +
+        "Save as outreach kind 'connect', channel 'linkedin', status 'draft', origin 'linkedin', link = profile URL, body = the note, note " +
+        "'LI: <LANE> · not connected · DESK-MATCH · WHY: <reason> · Checked <date>: not in console outreach'. Upsert crm_contacts (source 'linkedin-agent'). 30 pages max.",
       SAFE,
     ].join("\n"),
   },

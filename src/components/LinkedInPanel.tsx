@@ -278,11 +278,10 @@ const LANES: { k: Lane; label: string }[] = [
   { k: "OPERATORS", label: "Operators" },
 ];
 
-/** Drafts written by the LinkedIn agent start their note with "LI: <LANE> · ...". */
+/** Drafts written by the LinkedIn agent carry "LI: <LANE> · ..." in their note (GPU-* lanes count as Compute). */
 export function laneOf(o: Pick<Outreach, "note">): Lane | null {
-  const m = /^LI:\s*(CAPITAL|OFFTAKERS?|COMPUTE|OPERATORS)\b/.exec((o.note ?? "").trim());
-  if (!m) return null;
-  return (m[1].startsWith("OFFTAKER") ? "OFFTAKERS" : m[1]) as Lane;
+  const t = laneTag(o.note);
+  return t === "CAPITAL" || t === "OFFTAKERS" || t === "COMPUTE" || t === "OPERATORS" ? t : null;
 }
 
 function laneCounts(rows: Outreach[]): Record<Lane, number> {
@@ -292,11 +291,13 @@ function laneCounts(rows: Outreach[]): Record<Lane, number> {
 }
 
 export function agentPrompt(lane: Lane): string {
-  const lanes = lane === "ALL" ? "whatever the live mandates and priorities need most (capital, offtakers, compute, operators)" : lane.toLowerCase();
+  const lanes = lane === "ALL" ? "whatever the live priorities and mandates need most" : lane.toLowerCase();
   return [
-    `Nodus LinkedIn agent: run the nodus-linkedin-agent skill now in my Chrome (Claude in Chrome extension). Lane: ${lanes}.`,
-    "DMs go to my 1st-degree connections only (newest connections first), each checked against my whole LinkedIn inbox and the console so nobody I've already messaged gets one. People I'm not connected to get a connection note only.",
-    "Also find 25 recent posts worth commenting on (my lanes, last 7 days) and draft a comment for each, with the post's opening words so I can find it.",
+    `Nodus LinkedIn agent: run the nodus-linkedin-agent skill (v7) now in my Chrome (Claude in Chrome extension). Lane: ${lanes}.`,
+    "Follow nodus/30-outreach/LINKEDIN-STANDARD.md v3 exactly. Start from the desk: pull active priorities and mandates from Supabase and put a live, blind requirement in front of every person.",
+    "1) Comments: 15 posts from the biggest voices in my lanes (5k+ followers, ideally 20k+), under 3 hours old where possible and never over 12, with the author's reach in the note. Each comment adds one specific point from our desk; no pitch, no template openings.",
+    "2) DMs: at least 25 to 1st-degree connections (people who accepted my invites first), desk-matched, plus rewrite or park any DM draft older than 7 days that no longer fits a live requirement.",
+    "3) Connection notes: 30 new people who can move a live requirement (supply, demand, lenders, investors), one per company, nobody already in the console.",
     "Read-only and human-paced: never click Connect, Message, Like, Comment or Send; at least 15 s between pages, 40 pages max. I send everything myself.",
   ].join("\n");
 }

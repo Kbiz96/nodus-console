@@ -3,7 +3,7 @@
 
 import type { Outreach } from "./types.ts";
 
-export type LiSortKey = "newest" | "oldest" | "post" | "fit" | "lane" | "name" | "company";
+export type LiSortKey = "newest" | "oldest" | "post" | "reach" | "fit" | "lane" | "name" | "company";
 export type LiListKind = "dm" | "note" | "comment";
 
 type Row = Pick<Outreach, "created_at" | "note" | "to_name" | "company">;
@@ -12,6 +12,7 @@ const LABELS: Record<LiSortKey, string> = {
   newest: "Newest first",
   oldest: "Oldest first",
   post: "Freshest post first",
+  reach: "Biggest audience first",
   fit: "Best fit first",
   lane: "Lane",
   name: "Name A–Z",
@@ -21,7 +22,7 @@ const LABELS: Record<LiSortKey, string> = {
 /** The sort options that make sense for each list. */
 export function sortOptions(kind: LiListKind): { k: LiSortKey; label: string }[] {
   const keys: LiSortKey[] =
-    kind === "comment" ? ["newest", "post", "oldest", "name", "company"] : ["newest", "oldest", "fit", "lane", "name", "company"];
+    kind === "comment" ? ["newest", "post", "reach", "oldest", "name", "company"] : ["newest", "oldest", "fit", "lane", "name", "company"];
   return keys.map((k) => ({ k, label: LABELS[k] }));
 }
 
@@ -29,16 +30,37 @@ export function isSortKey(v: unknown, kind: LiListKind): v is LiSortKey {
   return typeof v === "string" && sortOptions(kind).some((o) => o.k === v);
 }
 
-/** "fit A" / "fit B" from the agent's note; null when it did not grade the person. */
+/** "fit A" / "fit B" from the agent's note; speed scores S7+ count as A and S5–S6 as B. Null when ungraded. */
 export function fitOf(note: string | null | undefined): "A" | "B" | null {
   const m = /\bfit\s+([AB])\b/i.exec(note ?? "");
-  return m ? (m[1].toUpperCase() as "A" | "B") : null;
+  if (m) return m[1].toUpperCase() as "A" | "B";
+  const s = /·\s*S(\d{1,2})\b/.exec(note ?? "");
+  if (!s) return null;
+  const n = Number(s[1]);
+  return n >= 7 ? "A" : n >= 5 ? "B" : null;
 }
 
-/** The lane the agent tagged ("LI: CAPITAL · ..."); comments and untagged drafts have none. */
-export function laneTag(note: string | null | undefined): string | null {
-  const m = /^LI:\s*(CAPITAL|OFFTAKERS?|COMPUTE|OPERATORS|POWER|MAGNET)\b/.exec((note ?? "").trim());
+/**
+ * The author's audience when the agent found the post: "reach 290k followers" or "reach 12,400". Used to put the
+ * comments that will be seen most at the top (Kuran, 19 Nov: comment early on the biggest voices).
+ */
+export function reachOf(note: string | null | undefined): number | null {
+  const m = /\breach\s+([\d.,]+)\s*([km])?\b/i.exec(note ?? "");
   if (!m) return null;
+  const n = Number(m[1].replace(/,/g, ""));
+  if (!Number.isFinite(n)) return null;
+  const mult = m[2]?.toLowerCase() === "m" ? 1_000_000 : m[2]?.toLowerCase() === "k" ? 1_000 : 1;
+  return Math.round(n * mult);
+}
+
+/**
+ * The lane the agent tagged ("LI: CAPITAL · ...", "LI v3: GPU-SUPPLY · ..."), even after a prefix such as
+ * "REWRITTEN 18 Nov 2026 · ". GPU-SUPPLY, GPU-DEMAND and GPU-FINANCE are the compute lane. Comments have none.
+ */
+export function laneTag(note: string | null | undefined): string | null {
+  const m = /\bLI(?:\s*v\d+)?:\s*(CAPITAL|OFFTAKERS?|COMPUTE|OPERATORS|POWER|MAGNET|GPU-(?:SUPPLY|DEMAND|FINANCE))\b/.exec(note ?? "");
+  if (!m) return null;
+  if (m[1].startsWith("GPU-")) return "COMPUTE";
   return m[1].startsWith("OFFTAKER") ? "OFFTAKERS" : m[1];
 }
 
@@ -83,6 +105,7 @@ export function sortLinkedIn<T extends Row>(rows: T[], key: LiSortKey): T[] {
     newest,
     oldest: (a, b) => -newest(a, b),
     post: (a, b) => (postDate(b)?.getTime() ?? 0) - (postDate(a)?.getTime() ?? 0),
+    reach: (a, b) => (reachOf(b.note) ?? -1) - (reachOf(a.note) ?? -1),
     fit: (a, b) => {
       const r = (x: T) => { const f = fitOf(x.note); return f === "A" ? 0 : f === "B" ? 1 : 2; };
       return r(a) - r(b);
