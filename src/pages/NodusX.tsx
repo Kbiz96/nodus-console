@@ -87,9 +87,11 @@ function ListingCard({ l, onDone }: { l: NxListing; onDone: () => void }) {
   const warnings = publicNoteWarnings(pub, l);
   const isBrief = l.source === "nodusx-brief" || l.status === "private";
   const spec = Object.entries(l.spec ?? {}).filter(([, v]) => v);
+  // Nodus's own lots carry a placeholder address (seed@nodus.partners): there is no submitter to email.
+  const internal = l.origin === "nodus" || /^seed@/i.test(l.email);
 
   const start = (decision: NxDecision) => {
-    const draft = decisionEmail(l, decision, { ref: decision === "approve" || decision === "verify" ? l.ref ?? "NX-…" : l.ref });
+    const draft = internal ? null : decisionEmail(l, decision, { ref: decision === "approve" || decision === "verify" ? l.ref ?? "NX-…" : l.ref });
     setCompose({ decision, draft, reason: "", info: "", send: Boolean(draft) });
   };
   const refresh = (c: NonNullable<typeof compose>, patch: Partial<NonNullable<typeof compose>>) => {
@@ -149,9 +151,8 @@ function ListingCard({ l, onDone }: { l: NxListing; onDone: () => void }) {
           </span>
           <strong>{summarise(l)}</strong>
           <span className="small muted">
-            {l.company ?? "No company given"}{l.role ? ` · ${l.role}` : ""} · <a href={`mailto:${l.email}`}>{l.email}</a>
+            {internal ? "Nodus lot, internal (no submitter to email)" : <>{l.company ?? "No company given"}{l.role ? ` · ${l.role}` : ""} · <a href={`mailto:${l.email}`}>{l.email}</a></>}
             {l.crm_contact_id && <> · <Link to={`/contacts?id=${l.crm_contact_id}`}>CRM</Link></>}
-            {l.origin === "nodus" && " · Nodus lot"}
           </span>
         </div>
         <button type="button" className="btn ghost" onClick={() => setOpen(!open)}>{open ? "Close" : "Open"}</button>
