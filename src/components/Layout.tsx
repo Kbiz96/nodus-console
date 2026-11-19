@@ -17,6 +17,7 @@ const PRIMARY: Item[] = [
   { to: "/", label: "Today", icon: "focus", end: true },
   { to: "/pipeline", label: "Pipeline", icon: "deals" },
   { to: "/board", label: "Engine", icon: "engine" },
+  { to: "/nodusx", label: "NodusX", icon: "matches" },
   { to: "/learn", label: "Learn", icon: "learn" },
 ];
 const MORE: { name: string; items: Item[] }[] = [

@@ -22,6 +22,7 @@ import OrganisationDetail from "./pages/OrganisationDetail.tsx";
 import Signals from "./pages/Signals.tsx";
 import SignalDetail from "./pages/SignalDetail.tsx";
 import Mandates from "./pages/Mandates.tsx";
+import NodusX from "./pages/NodusX.tsx";
 import Sources from "./pages/Sources.tsx";
 import Spend from "./pages/Spend.tsx";
 import Search from "./pages/Search.tsx";
@@ -118,6 +119,7 @@ export default function App() {
         <Route path="/signals" element={<Signals />} />
         <Route path="/signals/:id" element={<SignalDetail />} />
         <Route path="/mandates" element={<Mandates />} />
+        <Route path="/nodusx" element={<NodusX />} />
         <Route path="/sources" element={<Sources />} />
         <Route path="/spend" element={<Spend />} />
         <Route path="/search" element={<Search />} />
