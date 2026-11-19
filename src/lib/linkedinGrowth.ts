@@ -19,7 +19,7 @@ const SAFE =
   "If LinkedIn shows a warning or limit, stop and tell me. I send and post everything myself. " +
   "Write to Supabase NODUS2 (tfsioiuvmyuqgajxtklv) only, confirm the rows landed with one count, then end with Done / Needs Kuran.";
 
-export type GrowthKey = "comment" | "network" | "posts" | "engagers" | "magnet" | "scorecard";
+export type GrowthKey = "counterparties" | "comment" | "network" | "posts" | "engagers" | "magnet" | "scorecard";
 
 export interface GrowthAction {
   key: GrowthKey;
@@ -30,6 +30,20 @@ export interface GrowthAction {
 }
 
 export const GROWTH_ACTIONS: GrowthAction[] = [
+  {
+    key: "counterparties",
+    label: "Find 50 counterparties",
+    when: "When you need it. 50 people who can solve our most pressing mandates.",
+    prompt: [
+      HEAD("find 50 counterparties") + " Use the nodus-mandate-connector skill.",
+      "Rank the active priorities and mandates in Supabase by pressure (deadline, money at stake, protected or not, how thin the current bench is) and split the 50 across them, most pressing first.",
+      "For each, name the counterparty that actually solves it (capacity holders, operators, lenders, investors or AI companies, per the card), then find the people most likely to say yes: " +
+        "CRM rows never contacted, 2nd-degree LinkedIn searches, authors of recent posts, and Apollo within the credit cap. One per company; nobody already in the console.",
+      "Score each 0 to 10 for fit, timing, authority, signal and reachability; keep 6+. Draft a connection note of 200 characters or fewer naming the blind requirement, ending 'Kuran'. " +
+        "Save as outreach kind 'connect', status 'draft', with the priority_id and note 'LI: <LANE> · not connected · COUNTERPARTY · S<score> · REQ: <requirement> · WHY: <evidence>'. 30 pages max.",
+      SAFE,
+    ].join("\n"),
+  },
   {
     key: "comment",
     label: "Comment now",

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { GROWTH_ACTIONS, PAGE_COMPOSE_URL, PERSONAL_COMPOSE_URL, firstComment, postComposeUrl, postTarget, postType, publishSlot } from "../src/lib/linkedinGrowth.ts";
 import { claudeLink } from "../src/lib/claude.ts";
 
-test("six growth buttons, each a full Nodus command that fits in one link", () => {
-  assert.deepEqual(GROWTH_ACTIONS.map((a) => a.key), ["comment", "network", "posts", "engagers", "magnet", "scorecard"]);
+test("seven growth buttons, each a full Nodus command that fits in one link", () => {
+  assert.deepEqual(GROWTH_ACTIONS.map((a) => a.key), ["counterparties", "comment", "network", "posts", "engagers", "magnet", "scorecard"]);
   for (const a of GROWTH_ACTIONS) {
     assert.ok(a.prompt.startsWith("Nodus command: LinkedIn growth"), a.key);
     assert.ok(a.prompt.includes("LINKEDIN-STANDARD.md"), a.key);
