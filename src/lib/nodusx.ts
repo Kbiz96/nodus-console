@@ -99,7 +99,7 @@ export function firstName(l: Pick<NxListing, "email" | "agreement">): string {
   return local.length > 1 && !/^(info|sales|hello|contact|admin|ops|team)$/i.test(local) ? local.charAt(0).toUpperCase() + local.slice(1) : "Hello";
 }
 
-export const SIGNATURE = "Kuran Sailopal\nDirector, Nodus Partners\nnodus.partners | info@nodus.equipment";
+export const SIGNATURE = "Kuran Sailopal\nDirector, Nodus Partners\nnodus.partners | nodusx@nodus.partners";
 
 /** Words that never go in a decision email (fees, prices). Used as a last check before sending. */
 export function forbiddenWords(text: string): string[] {

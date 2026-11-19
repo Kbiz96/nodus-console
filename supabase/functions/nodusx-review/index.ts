@@ -4,12 +4,13 @@
 //   decide {id, decision, public_note?, reason?, info?, review_note?, diligence?, email?: {to, subject, body}}
 //     decision: approve | verify | reject | info | withdraw | reopen | private | save
 //     Records the decision through nodusx_decide (RLS, Kuran only), then, when an email is given, sends it from
-//     info@nodus.equipment in Kuran's name through the connected Gmail and stamps decision_emailed_at.
+//     nodusx@nodus.partners (info@nodus.equipment until that send-as is verified) through the connected Gmail, and stamps
+//     decision_emailed_at.
 //   email {id, email: {to, subject, body}}   Sends a further email on a listing (for example a reminder) and logs it.
 // Auth: the gateway verifies the JWT; nodus_is_kuran() must be true. Every read and write runs as that user.
 // Never mentions fees or prices: the console composes the text, Kuran edits it, this function only sends it.
 import { createClient, type SupabaseClient } from "jsr:@supabase/supabase-js@2";
-import { FROM_DEFAULT, buildMessage } from "./mail.ts";
+import { FALLBACK_FROM, NODUSX_FROM, buildMime } from "./mime.ts";
 
 const GMAIL = "https://gmail.googleapis.com/gmail/v1/users/me";
 const CORS = {
@@ -50,14 +51,25 @@ function cleanMail(v: unknown): Mail | null {
   return { to, subject: subject.slice(0, 200), body: body.slice(0, 8000) };
 }
 
+let sendAs: { list: string[]; at: number } | null = null;
+async function nodusxReady(): Promise<boolean> {
+  if (!sendAs || sendAs.at < Date.now() - 300_000) {
+    const r = await fetch(`${GMAIL}/settings/sendAs`, { headers: { Authorization: `Bearer ${await accessToken()}` } });
+    const d = await r.json().catch(() => ({})) as { sendAs?: { sendAsEmail: string; isPrimary?: boolean; verificationStatus?: string }[] };
+    sendAs = { at: Date.now(), list: (d.sendAs ?? []).filter((a) => a.isPrimary || a.verificationStatus === "accepted").map((a) => a.sendAsEmail.toLowerCase()) };
+  }
+  return sendAs.list.includes(NODUSX_FROM);
+}
+
 async function sendMail(db: SupabaseClient, id: string, mail: Mail, decision: string) {
-  const raw = buildMessage({ from: FROM_DEFAULT, to: mail.to, subject: mail.subject, body: mail.body });
+  const from = (await nodusxReady()) ? NODUSX_FROM : FALLBACK_FROM;
+  const raw = buildMime({ fromName: "Kuran Sailopal, NodusX", from, to: mail.to, replyTo: from, subject: mail.subject, text: mail.body });
   const res = await fetch(`${GMAIL}/messages/send`, {
     method: "POST", headers: { Authorization: `Bearer ${await accessToken()}`, "content-type": "application/json" }, body: JSON.stringify({ raw }),
   });
   const d = await res.json().catch(() => ({})) as { id?: string; threadId?: string; error?: { message?: string } };
   if (!res.ok || !d.id) throw new Error(`Gmail did not send: ${d.error?.message ?? res.status}`);
-  const stamp = { ...mail, decision, gmail_id: d.id, thread_id: d.threadId, at: new Date().toISOString() };
+  const stamp = { ...mail, from, decision, gmail_id: d.id, thread_id: d.threadId, at: new Date().toISOString() };
   await db.from("board_listings").update({ decision_emailed_at: stamp.at, decision_email: stamp }).eq("id", id);
   return stamp;
 }

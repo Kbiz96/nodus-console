@@ -46,7 +46,7 @@ export default function NodusX() {
         <p className="muted">
           Every listing submitted on NodusX lands here. Nothing is public until you approve it. Check the party, tick the
           diligence, set the public wording, then approve, ask for more, or decline. The submitter is emailed from
-          info@nodus.equipment when you decide.
+          nodusx@nodus.partners when you decide (replies land under the NodusX label).
         </p>
         <p className="small muted">
           Live now: {live.filter((l) => l.side === "have").length} supply, {live.filter((l) => l.side === "need").length} requirements.{" "}
@@ -291,7 +291,7 @@ function Composer({ c, busy, onChange, onCancel, onGo }: {
       )}
       {c.draft && (
         <>
-          <label className="check"><input type="checkbox" checked={c.send} onChange={(e) => onChange({ send: e.target.checked })} /> Email them from info@nodus.equipment</label>
+          <label className="check"><input type="checkbox" checked={c.send} onChange={(e) => onChange({ send: e.target.checked })} /> Email them from nodusx@nodus.partners</label>
           {c.send && (
             <div className="stack-xs">
               <label className="field"><span>To</span><input value={c.draft.to} onChange={(e) => onChange({ draft: { ...c.draft!, to: e.target.value } })} /></label>
