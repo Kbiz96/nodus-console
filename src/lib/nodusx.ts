@@ -47,6 +47,8 @@ export interface NxListing {
   decision_emailed_at: string | null;
   decision_email: { subject?: string; decision?: string; at?: string } | null;
   agreement: NxAgreement | null;
+  public_snapshot?: Record<string, unknown> | null;
+  published_at?: string | null;
 }
 
 /** The checks Kuran runs before anything goes live. Keys are stored in board_listings.diligence. */
@@ -163,4 +165,17 @@ export function publicNoteWarnings(note: string, l: Pick<NxListing, "company" | 
 /** Days since a date, for "waiting 3 days". */
 export function ageDays(iso: string, now = Date.now()): number {
   return Math.max(0, Math.floor((now - Date.parse(iso)) / 86_400_000));
+}
+
+/** Fields the public board shows. Live edits stay internal until Kuran publishes them. */
+const PUB_KEYS = ["side", "kind", "mw", "gpus", "gpu_model", "market", "timing", "note", "deal"] as const;
+const norm = (v: unknown) => (v === undefined || v === "" ? null : typeof v === "number" ? Number(v) : v);
+export function unpublishedChanges(l: NxListing): string[] {
+  if (l.status !== "approved" && l.status !== "verified") return [];
+  const snap = l.public_snapshot;
+  if (!snap) return ["everything (never published)"];
+  const out: string[] = PUB_KEYS.filter((k) => String(norm((l as unknown as Record<string, unknown>)[k])) !== String(norm(snap[k])));
+  const strip = (o: unknown) => { const x = { ...((o as Record<string, unknown>) ?? {}) }; delete x.party; delete x.party_note; return JSON.stringify(Object.keys(x).sort().map((k) => [k, x[k]])); };
+  if (strip(l.spec) !== strip(snap.spec)) out.push("spec");
+  return out;
 }

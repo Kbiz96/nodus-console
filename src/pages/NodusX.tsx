@@ -8,11 +8,11 @@ import { toast } from "../components/Toast.tsx";
 import { Empty, ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 import {
   DILIGENCE, QUEUES, STATUS_LABEL, ageDays, decisionEmail, forbiddenWords, publicNoteWarnings, summarise,
-  type Draft, type NxDecision, type NxListing,
+  type Draft, type NxDecision, type NxListing, unpublishedChanges,
 } from "../lib/nodusx.ts";
 
 const FN = "nodusx-review";
-const COLS = "id,created_at,side,kind,mw,gpus,gpu_model,market,timing,note,note_original,email,company,role,status,origin,source,deal,spec,ref,crm_contact_id,diligence,review_note,reject_reason,info_requested,reviewed_at,decision_emailed_at,decision_email,agreement:nodusx_agreements(id,created_at,role,terms_version,full_name,job_title,company,email,ip,signature_image)";
+const COLS = "id,created_at,side,kind,mw,gpus,gpu_model,market,timing,note,note_original,email,company,role,status,origin,source,deal,spec,ref,crm_contact_id,diligence,review_note,reject_reason,info_requested,reviewed_at,decision_emailed_at,decision_email,public_snapshot,published_at,agreement:nodusx_agreements(id,created_at,role,terms_version,full_name,job_title,company,email,ip,signature_image)";
 
 /** NodusX submissions and Nodus's own lots; public scrapes from the old Watt Street board are left out. */
 async function load(): Promise<NxListing[]> {
@@ -32,10 +32,12 @@ async function call(body: Record<string, unknown>) {
 export default function NodusX() {
   useTitle("NodusX");
   const [sp, setSp] = useSearchParams();
+  const isMap = !sp.get("q") || sp.get("q") === "map";
   const queue = QUEUES.find((q) => q.key === sp.get("q")) ?? QUEUES[0];
   const { data, error, loading, reload } = useCached(load, "nodusx:listings", 15_000);
   const counts = useMemo(() => Object.fromEntries(QUEUES.map((q) => [q.key, (data ?? []).filter((l) => q.statuses.includes(l.status)).length])), [data]);
   const shown = (data ?? []).filter((l) => queue.statuses.includes(l.status));
+  const unpublished = (data ?? []).filter((l) => unpublishedChanges(l).length > 0).length;
   const live = (data ?? []).filter((l) => l.status === "approved" || l.status === "verified");
 
   return (
@@ -56,15 +58,24 @@ export default function NodusX() {
       </div>
 
       <nav className="tabs" aria-label="Queue">
+        <Link to="/nodusx?q=map" className={isMap ? "active" : undefined}>Match map</Link>
         {QUEUES.map((q) => (
-          <Link key={q.key} to={`/nodusx?q=${q.key}`} className={q.key === queue.key ? "active" : undefined}>
-            {q.label} ({counts[q.key] ?? 0})
+          <Link key={q.key} to={`/nodusx?q=${q.key}`} className={!isMap && q.key === queue.key ? "active" : undefined}>
+            {q.label} ({counts[q.key] ?? 0}){q.key === "live" && unpublished ? ` · ${unpublished} unpublished` : ""}
           </Link>
         ))}
         <button type="button" className="link-btn" onClick={reload}>Refresh</button>
       </nav>
 
-      {error && !data ? <ErrorBox error={error} onRetry={reload} />
+      {isMap ? (
+        <div className="nx-map-frame">
+          <p className="small muted">
+            Every line on NodusX, including ones still in review, with who is behind it and what it matches. Updates itself every 30 seconds.
+            The public board only changes when you approve a line or publish its changes.
+          </p>
+          <iframe title="NodusX match map" src="./nodusx-map/?embed=1" style={{ width: "100%", height: "calc(100vh - 230px)", minHeight: 620, border: "1px solid var(--rule, #ddd)", borderRadius: 8, background: "#EDF1F3" }} />
+        </div>
+      ) : error && !data ? <ErrorBox error={error} onRetry={reload} />
         : loading && !data ? <Loading what="Loading submissions…" />
         : shown.length === 0 ? <Empty>{queue.key === "review" ? "Nothing waiting. New submissions appear here the moment they are sent." : "None."}</Empty>
         : (
@@ -102,6 +113,20 @@ function ListingCard({ l, onDone }: { l: NxListing; onDone: () => void }) {
       if (d && c.draft) n.draft = { ...c.draft, body: d.body };
     }
     setCompose(n);
+  };
+
+  const publish = async () => {
+    if (warnings.length) { toast(`Fix the public wording first: ${warnings[0]}`, false); return; }
+    setBusy(true);
+    try {
+      must(await supabase.rpc("nodusx_decide", { p_id: l.id, p_decision: "publish", p_public_note: pub.trim() || null, p_review_note: notes, p_diligence: checks }));
+      toast("Published. The public board now shows this version.", true);
+      onDone();
+    } catch (e) {
+      toast(friendlyError(e), false);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const run = async (decision: NxDecision, extra: { reason?: string; info?: string; draft?: Draft | null } = {}) => {
@@ -151,6 +176,11 @@ function ListingCard({ l, onDone }: { l: NxListing; onDone: () => void }) {
             {l.status === "pending" && ageDays(l.created_at) >= 1 ? ` · waiting ${ageDays(l.created_at)}d` : ""}
           </span>
           <strong>{summarise(l)}</strong>
+          {unpublishedChanges(l).length > 0 && (
+            <span className="small" style={{ color: "#B5541B" }}>
+              Unpublished changes: {unpublishedChanges(l).join(", ")}. The public board still shows the last published version.
+            </span>
+          )}
           <span className="small muted">
             {internal ? "Nodus lot, internal (no submitter to email)" : <>{l.company ?? "No company given"}{l.role ? ` · ${l.role}` : ""} · <a href={`mailto:${l.email}`}>{l.email}</a></>}
             {l.crm_contact_id && <> · <Link to={`/contacts?id=${l.crm_contact_id}`}>CRM</Link></>}
@@ -249,6 +279,9 @@ function ListingCard({ l, onDone }: { l: NxListing; onDone: () => void }) {
               {l.status === "approved" && <button type="button" className="btn" disabled={busy || done < DILIGENCE.length} title={done < DILIGENCE.length ? "All checks first" : undefined} onClick={() => run("verify")}>Mark verified</button>}
               {(l.status === "approved" || l.status === "verified") && <button type="button" className="btn" disabled={busy} onClick={() => start("withdraw")}>Take down</button>}
               {(l.status === "rejected" || l.status === "withdrawn") && <button type="button" className="btn" disabled={busy} onClick={() => run("reopen")}>Reopen</button>}
+              {unpublishedChanges(l).length > 0 && (
+                <button type="button" className="btn primary" disabled={busy} onClick={() => publish()}>Publish changes</button>
+              )}
               <button type="button" className="btn ghost" disabled={busy} onClick={() => run("save")}>Save notes</button>
             </div>
           )}

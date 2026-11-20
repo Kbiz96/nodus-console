@@ -299,7 +299,7 @@ footer p{margin:0;max-width:96ch}
 </style>
 </head>
 <body>
-<div id="nx-int" style="background:#3D47C9;color:#fff;padding:10px 18px;font-size:14px;position:sticky;top:0;z-index:50">Internal match map. Live board data with sources, including pending lines. Not public. <a href="../#/nodusx" style="color:#fff">Back to the console</a></div>
+<div id="nx-int" style="background:#3D47C9;color:#fff;padding:10px 18px;font-size:14px;position:sticky;top:0;z-index:50">Internal match map. Live board data with sources, including pending lines. Not public. <a href="../#/nodusx" style="color:#fff">Back to the console</a></div><script>if(new URLSearchParams(location.search).get("embed")||window.self!==window.top){document.getElementById("nx-int").style.display="none"}</script>
 <header class="top"><div class="wrap">
   <a class="mark" href="/nodusx">Nodus<span>X</span><small>by Nodus Partners</small></a>
   <nav aria-label="NodusX"><a class="hide-s" href="#market">Market</a><a class="hide-s" href="#process">How it works</a><a class="hide-s" href="#brief">Private briefs</a><a class="btn" href="#" data-open="have">List capacity</a></nav>
@@ -912,6 +912,7 @@ function nxGate(t){const b=$("#nx-int");if(b)b.innerHTML=t}
   .then(r=>{if(r.status===401){nxGate('Session expired. <a href="../">Open the console</a> to refresh it, then reload.');return []}return r.json()}).then(a=>({listings:(Array.isArray(a)?a:[]).map(r=>{const tag=[r.ref,r.company||r.email,r.status==="approved"||r.status==="verified"?"":r.status.toUpperCase()].filter(Boolean).join(" · ");return {...r,note:tag+(r.note?" — "+r.note:"")}})}))})().then(j=>{const rows=(j.listings||[]).filter(r=>(r.kind==="gpu"||r.kind==="capacity")&&r.origin!=="public"&&!/consortium|empanelment|tender/i.test(r.deal||""));
   rows.forEach((r,i)=>{const x=fromBoard(r,i);if(!x)return;(x.side==="have"?SUPPLY:DEMAND).push(x)})}).catch(()=>{}).finally(()=>{pulse();window.drawFam&&drawFam();render();window.tlLabel&&tlLabel()});
 pulse();render();
+let nxIdle=Date.now();["pointerdown","wheel","keydown"].forEach(e=>addEventListener(e,()=>nxIdle=Date.now(),{passive:true}));setInterval(()=>{if(!document.hidden&&Date.now()-nxIdle>60000)location.reload()},30000);
 </script>
 </body>
 </html>
