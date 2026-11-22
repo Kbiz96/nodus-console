@@ -54,7 +54,7 @@ export default function NodusX() {
         </p>
         <p className="small muted">
           Live now: {live.filter((l) => l.side === "have").length} supply, {live.filter((l) => l.side === "need").length} requirements.{" "}
-          <a href="https://nodus-partners-webs-git-6a058a-kuransailopal-gmailcoms-projects.vercel.app/nodusx" target="_blank" rel="noreferrer">Open the board</a>{" · "}
+          <a href="https://nodus.partners/nodusx" target="_blank" rel="noreferrer">Open the board</a>{" · "}
           <a href="./nodusx-map/" target="_blank" rel="noreferrer">Match map (internal)</a>
         </p>
       </div>

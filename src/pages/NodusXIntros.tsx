@@ -7,7 +7,7 @@ import { toast } from "../components/Toast.tsx";
 import { Empty, ErrorBox, Loading } from "../components/ui.tsx";
 
 /** NodusX introductions: operator accepts in one click (fee agreed), then tracked to contract, invoice, payment and our fee. */
-const BOARD = "https://nodus-partners-webs-git-6a058a-kuransailopal-gmailcoms-projects.vercel.app";
+const BOARD = "https://nodus.partners";
 
 type Intro = {
   id: string; ref: string; token: string; status: string; fee_pct: number;
