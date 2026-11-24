@@ -8,6 +8,7 @@ import Layout from "./components/Layout.tsx";
 import { Logo } from "./components/Brand.tsx";
 import { Loading, NOT_APPROVED, NotFound } from "./components/ui.tsx";
 import Login from "./pages/Login.tsx";
+import SetPassword from "./pages/SetPassword.tsx";
 import Today from "./pages/Today.tsx";
 import Home from "./pages/Home.tsx";
 import Pipeline from "./pages/Pipeline.tsx";
@@ -38,21 +39,37 @@ const MapView = lazy(() => import("./pages/MapView.tsx"));
 
 type Access = "checking" | "approved" | "refused" | { error: string };
 
+// A password-reset link signs the browser in only so a new password can be set. Until it is, the console shows
+// nothing but the set-password screen (the flag survives a reload in this tab).
+const RECOVERY_KEY = "nodus-recovery";
+const recoveryPending = () => {
+  try { return sessionStorage.getItem(RECOVERY_KEY) === "1"; } catch { return false; }
+};
+const setRecovery = (on: boolean) => {
+  try { if (on) sessionStorage.setItem(RECOVERY_KEY, "1"); else sessionStorage.removeItem(RECOVERY_KEY); } catch { /* private mode */ }
+};
+if (typeof window !== "undefined" && /type=recovery/.test(window.location.hash)) setRecovery(true);
+
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
   const [access, setAccess] = useState<Access>("checking");
   const [attempt, setAttempt] = useState(0);
+  const [recovery, setRecoveryState] = useState(recoveryPending());
 
   const location = useLocation();
   const navigate = useNavigate();
   // After an emailed sign-in link, the router briefly sees the token fragment as a page; send it to Today.
   useEffect(() => {
-    if (session && /access_token|refresh_token|type=magiclink/.test(location.pathname)) navigate("/", { replace: true });
+    if (session && /access_token|refresh_token|type=magiclink|type=recovery/.test(location.pathname)) navigate("/", { replace: true });
   }, [session, location.pathname, navigate]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, s) => setSession(s));
+    const { data } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === "PASSWORD_RECOVERY") { setRecovery(true); setRecoveryState(true); }
+      if (event === "SIGNED_OUT") { setRecovery(false); setRecoveryState(false); }
+      setSession(s);
+    });
     return () => data.subscription.unsubscribe();
   }, []);
 
@@ -77,6 +94,7 @@ export default function App() {
 
   if (session === undefined) return <Splash text="Loading…" />;
   if (!session) return <Login />;
+  if (recovery) return <SetPassword recovery onDone={() => { setRecovery(false); setRecoveryState(false); navigate("/", { replace: true }); }} />;
   if (access === "checking") return <Splash text="Checking your access…" />;
   if (access === "refused") {
     return (
@@ -109,6 +127,7 @@ export default function App() {
         <Route path="/today" element={<Today />} />
         <Route path="/board" element={<Board />} />
         <Route path="/learn" element={<Learn />} />
+        <Route path="/password" element={<SetPassword recovery={false} onDone={() => navigate("/")} />} />
         <Route path="/engine" element={<Engine />} />
         <Route path="/map" element={<Suspense fallback={<Loading what="Loading the map…" />}><MapView /></Suspense>} />
         <Route path="/matches" element={<Matches />} />

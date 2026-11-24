@@ -11,25 +11,21 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [linkSent, setLinkSent] = useState(false);
 
-  // Forgotten password: email a one-click sign-in link. Only existing approved users get one (no sign-ups).
+  // Forgotten password: email a reset link. It opens a "set a new password" screen; it does not sign in on its own.
+  // Same message whether or not the address has access, so the page never reveals who is a user.
   const sendLink = async () => {
     if (!email.trim()) {
-      setError("Enter your email address first, then press the link button.");
+      setError("Enter your email address first, then press the reset button.");
       return;
     }
     setPending(true);
     setError(null);
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim(),
-      options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + window.location.pathname },
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: window.location.origin + window.location.pathname,
     });
     setPending(false);
-    if (error) {
-      setError(/rate|too many/i.test(error.message)
-        ? "A link was sent very recently. Please wait a few minutes and check your inbox."
-        : /signups? not allowed|not found/i.test(error.message)
-          ? "That email address doesn't have access to this page."
-          : error.message);
+    if (error && /rate|too many/i.test(error.message)) {
+      setError("A reset email was sent very recently. Please wait a few minutes and check your inbox.");
     } else {
       setLinkSent(true);
     }
@@ -75,11 +71,11 @@ export default function Login() {
           </button>
         </form>
         <button className="btn" type="button" onClick={sendLink} disabled={pending}>
-          Forgot password? Email me a sign-in link
+          Forgot password? Email me a reset link
         </button>
         {linkSent && (
           <p className="muted" role="status">
-            Sent. Open the email from Supabase and tap the link; it signs you straight in.
+            If that address has access, a reset email is on its way. Tap the link, then choose a new password.
           </p>
         )}
       </div>

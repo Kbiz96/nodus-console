@@ -138,6 +138,7 @@ export default function Layout({ email, onSignOut, children }: { email: string |
         </nav>
         <div className="rail-foot">
           {email && <span className="who" title={email}>{email}</span>}
+          <Link className="link-btn" to="/password">Password</Link>
           <button type="button" className="link-btn" onClick={onSignOut} title={email ? `Signed in as ${email}` : undefined}>Sign out</button>
         </div>
       </aside>
@@ -192,6 +193,7 @@ export default function Layout({ email, onSignOut, children }: { email: string |
         ))}
         <div className="rail-foot">
           {email && <span className="who">{email}</span>}
+          <Link className="link-btn" to="/password">Password</Link>
           <button type="button" className="link-btn" onClick={onSignOut}>Sign out</button>
         </div>
       </div>
