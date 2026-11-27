@@ -10,6 +10,7 @@ import { AskClaude } from "../components/PriorityCard.tsx";
 import { Icon } from "../components/Brand.tsx";
 import { toast } from "../components/Toast.tsx";
 import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
+import { DismissButton, dismissWithUndo, useDismissed } from "../components/Dismiss.tsx";
 
 const DEAD_DEAL = "Closed – lost";
 const DEAD_CONTACT = "Nurture";
@@ -18,6 +19,7 @@ const FIRST = 40;
 /**
  * Pipeline: open deals and warm contacts in one list, stalled first. Each row says who, what is next and how late,
  * with one button that has Claude draft the nudge as a Gmail draft in the existing thread, and Close as dead.
+ * X hides a row from the console only (the deal or contact is not changed), with Undo.
  */
 export default function Pipeline() {
   useTitle("Pipeline");
@@ -25,9 +27,10 @@ export default function Pipeline() {
   const [closed, setClosed] = useState<Map<string, string | null>>(() => new Map());
   const [all, setAll] = useState(false);
   const today = ukToday();
+  const dz = useDismissed();
   const rows = useMemo(
-    () => (data ? pipelineRows(data.deals, data.contacts, today, data.people) : []).filter((r) => !closed.has(`${r.kind}:${r.id}`)),
-    [data, today, closed],
+    () => (data ? pipelineRows(data.deals, data.contacts, today, data.people) : []).filter((r) => !closed.has(`${r.kind}:${r.id}`) && !dz.keys.has(`${r.kind}:${r.id}`)),
+    [data, today, closed, dz.keys],
   );
   const stalled = rows.filter((r) => r.stalled);
   const shown = all ? rows : rows.slice(0, Math.max(FIRST, stalled.length));
@@ -75,7 +78,8 @@ export default function Pipeline() {
         <>
           <ol className="pipe-list">
             {shown.map((r, i) => (
-              <Row key={`${r.kind}:${r.id}`} r={r} divider={i > 0 && r.stalled !== shown[i - 1].stalled} onDead={() => void closeDead(r)} />
+              <Row key={`${r.kind}:${r.id}`} r={r} divider={i > 0 && r.stalled !== shown[i - 1].stalled} onDead={() => void closeDead(r)}
+                onDismiss={() => void dismissWithUndo(r.kind, r.id, r.kind === "deal" ? `${r.what}${r.who && r.who !== r.what ? ` (${r.who})` : ""}` : [r.who, r.company].filter(Boolean).join(" at "))} />
             ))}
           </ol>
           {rows.length > shown.length && (
@@ -88,11 +92,12 @@ export default function Pipeline() {
   );
 }
 
-function Row({ r, divider, onDead }: { r: PipeRow; divider: boolean; onDead: () => void }) {
+function Row({ r, divider, onDead, onDismiss }: { r: PipeRow; divider: boolean; onDead: () => void; onDismiss: () => void }) {
   const late = overdueLabel(r);
   const href = r.kind === "deal" ? `/deals?id=${r.id}` : `/contacts?id=${r.id}`;
   return (
-    <li className={`pipe-row${r.stalled ? " is-stalled" : ""}${divider ? " is-first-calm" : ""}`}>
+    <li className={`pipe-row has-x pad-x${r.stalled ? " is-stalled" : ""}${divider ? " is-first-calm" : ""}`}>
+      <DismissButton className="at-corner" onClick={onDismiss} />
       <div className="pipe-who">
         <Link to={href} className="pipe-name">{r.who}</Link>
         <span className="pipe-what">

@@ -1,5 +1,5 @@
-// Rules behind the Send deck: hold reasons, mandate groups with counts, one email per company, and the older
-// approved queue. Pure functions only, so they can be unit-tested.
+// Rules behind the Send deck: hold reasons, newest draft first, mandate groups with counts, one email per company,
+// and the older approved queue. Pure functions only, so they can be unit-tested.
 import type { Outreach, Priority } from "./types.ts";
 
 export const HOLD_REASONS = [
@@ -77,4 +77,14 @@ export function deckGroups<T extends Pick<Outreach, "id" | "priority_id">>(order
 export function frontGroup(queue: string[], ids: string[]): string[] {
   const set = new Set(ids);
   return [...queue.filter((id) => set.has(id)), ...queue.filter((id) => !set.has(id))];
+}
+
+/** Newest draft first (created_at descending; ties by id), whatever the mandate. The input is not changed. */
+export function newestFirst<T extends Pick<Outreach, "id" | "created_at">>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => {
+    const ta = Date.parse(a.created_at ?? "") || 0;
+    const tb = Date.parse(b.created_at ?? "") || 0;
+    if (ta !== tb) return tb - ta;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
 }

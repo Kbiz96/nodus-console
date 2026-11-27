@@ -7,6 +7,7 @@ import type { Outreach } from "../lib/types.ts";
 import { gmailSend, sendFailText } from "../lib/send.ts";
 import { sentText } from "../lib/today.ts";
 import { ExtLink } from "./ui.tsx";
+import { DismissButton } from "./Dismiss.tsx";
 
 export function OutreachMeta({ o }: { o: Outreach }) {
   return (
@@ -25,7 +26,7 @@ function who(o: Outreach): string {
 }
 
 /** A draft waiting for Kuran: email Send (from Gmail, now), LinkedIn ready to send by hand; edit or skip through outreach_decide. */
-export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void }) {
+export function DraftCard({ o, onChanged, onDismiss }: { o: Outreach; onChanged: () => void; onDismiss?: () => void }) {
   const isEmail = o.channel === "email" || o.kind === "email" || o.kind === "followup";
   const [subject, setSubject] = useState(o.subject ?? "");
   const [body, setBody] = useState(o.body ?? "");
@@ -61,7 +62,8 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
   };
 
   return (
-    <article className="card stack-xs outreach">
+    <article className={`card stack-xs outreach${onDismiss ? " has-x pad-x" : ""}`}>
+      {onDismiss && <DismissButton className="at-corner" onClick={onDismiss} />}
       <div className="row-between wrap">
         <strong>{who(o)}</strong>
         {o.to_email && <span className="muted small">{o.to_email}</span>}
@@ -101,7 +103,7 @@ export function DraftCard({ o, onChanged }: { o: Outreach; onChanged: () => void
 }
 
 /** A LinkedIn item Kuran sends himself: copy the text, open the profile, then mark it sent. */
-export function ManualCard({ o, onChanged }: { o: Outreach; onChanged: () => void }) {
+export function ManualCard({ o, onChanged, onDismiss }: { o: Outreach; onChanged: () => void; onDismiss?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const copy = async () => {
@@ -122,7 +124,8 @@ export function ManualCard({ o, onChanged }: { o: Outreach; onChanged: () => voi
     }
   };
   return (
-    <article className="card stack-xs outreach">
+    <article className={`card stack-xs outreach${onDismiss ? " has-x pad-x" : ""}`}>
+      {onDismiss && <DismissButton className="at-corner" onClick={onDismiss} />}
       <strong>{who(o)}</strong>
       <OutreachMeta o={o} />
       <div className="draft-text crm-text">{o.body || "(no text)"}</div>
@@ -136,8 +139,8 @@ export function ManualCard({ o, onChanged }: { o: Outreach; onChanged: () => voi
   );
 }
 
-/** A read-only line of outreach history. */
-export function OutreachLine({ o }: { o: Outreach }) {
+/** A read-only line of outreach history (with an X to dismiss it when `onDismiss` is given). */
+export function OutreachLine({ o, onDismiss }: { o: Outreach; onDismiss?: () => void }) {
   return (
     <li className="list-item">
       <div className="list-main">
@@ -152,6 +155,7 @@ export function OutreachLine({ o }: { o: Outreach }) {
         {o.sent_at && <p className="muted small">Sent {fmtDateTime(o.sent_at)}</p>}
         {o.replied_at && <p className="ok small">Replied {fmtDateTime(o.replied_at)}</p>}
       </div>
+      {onDismiss && <DismissButton onClick={onDismiss} />}
     </li>
   );
 }

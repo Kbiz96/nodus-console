@@ -11,6 +11,9 @@ import type { Outreach as OutreachRow } from "../lib/types.ts";
 import { OUTREACH_COLS } from "../components/TodayCrm.tsx";
 import { DraftCard, ManualCard, OutreachLine } from "../components/OutreachCards.tsx";
 import { Empty, ErrorBox, Loading, useTitle } from "../components/ui.tsx";
+import { dismissLabel } from "../components/Deck.tsx";
+import { dismissWithUndo, useDismissed } from "../components/Dismiss.tsx";
+import { filterDismissed } from "../lib/dismiss.ts";
 import { toast } from "../components/Toast.tsx";
 
 const LIMIT = 200;
@@ -35,13 +38,18 @@ export default function Outreach() {
   const raw = sp.get("status") ?? "draft";
   const status = (OUTREACH_STATUSES as readonly string[]).includes(raw) ? raw : "draft";
   const { data, error, loading, reload } = useLoad(() => load(status), `outreach-${status}`);
+  const dz = useDismissed();
+  // Newest draft first; anything dismissed with X is left out (Dismissed, under More, brings it back).
+  const rows = data ? filterDismissed(data.rows, "outreach", (o) => o.id, dz.keys) : [];
+  const hidden = data ? data.rows.length - rows.length : 0;
+  const x = (o: OutreachRow) => () => void dismissWithUndo("outreach", o.id, dismissLabel(o), { status: o.status, onChange: reload });
 
   return (
     <div className="stack-lg">
       <div className="section-head page-head-block">
         <span className="eyebrow">Pipeline</span>
         <h1>Outreach</h1>
-        <p className="muted">Every email and LinkedIn message, by status. Nothing is sent without your approval.</p>
+        <p className="muted">Every email and LinkedIn message, by status, newest first. Nothing is sent without your approval. Press X to clear one away.</p>
       </div>
       <nav className="tabs" aria-label="Status">
         {OUTREACH_STATUSES.map((s) => (
@@ -54,15 +62,16 @@ export default function Outreach() {
         <ErrorBox error={error} onRetry={reload} />
       ) : loading && !data ? (
         <Loading />
-      ) : !data || data.rows.length === 0 ? (
-        <Empty>Nothing here.</Empty>
+      ) : !data || rows.length === 0 ? (
+        <Empty>{hidden > 0 ? <>Nothing here. {fmtNumber(hidden)} dismissed: <Link to="/dismissed">see Dismissed</Link>.</> : "Nothing here."}</Empty>
       ) : (
         <section className="stack">
           {status === "draft"
-            ? data.rows.map((o) => <DraftCard key={`${o.id}-${o.subject ?? ""}-${o.body ?? ""}`} o={o} onChanged={reload} />)
+            ? rows.map((o) => <DraftCard key={`${o.id}-${o.subject ?? ""}-${o.body ?? ""}`} o={o} onChanged={reload} onDismiss={x(o)} />)
             : status === "manual"
-              ? data.rows.map((o) => <ManualCard key={o.id} o={o} onChanged={reload} />)
-              : <ul className="list">{data.rows.map((o) => <OutreachLine key={o.id} o={o} />)}</ul>}
+              ? rows.map((o) => <ManualCard key={o.id} o={o} onChanged={reload} onDismiss={x(o)} />)
+              : <ul className="list">{rows.map((o) => <OutreachLine key={o.id} o={o} onDismiss={x(o)} />)}</ul>}
+          {hidden > 0 && <p className="muted small">{fmtNumber(hidden)} dismissed {hidden === 1 ? "item is" : "items are"} hidden here. <Link to="/dismissed">See Dismissed</Link>.</p>}
           {(data.counts.get(status) ?? 0) > data.rows.length && <p className="muted small">Showing the newest {LIMIT}.</p>}
         </section>
       )}

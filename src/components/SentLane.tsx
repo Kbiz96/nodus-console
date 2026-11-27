@@ -9,6 +9,7 @@ import { friendlyError } from "../lib/rules.ts";
 import { Icon } from "./Brand.tsx";
 import { ApolloNote } from "./Deck.tsx";
 import { toast } from "./Toast.tsx";
+import { DismissButton, dismissWithUndo, useDismissed } from "./Dismiss.tsx";
 
 const SEQ_LABEL: Record<string, string> = { active: "In sequence", paused: "Paused", finished: "Finished", failed: "Failed", unknown: "Status unknown" };
 
@@ -31,10 +32,11 @@ export function SentLane() {
 
 function SentBody() {
   const { data, loading, reload } = useLoad(apolloActivity, "apollo-activity");
+  const dz = useDismissed();
   if (loading && !data) return <p className="muted small">Asking Apollo…</p>;
   if (!data) return null;
   if (!data.ok) return <ApolloNote fail={data} />;
-  const { replied, bounced, inSequence } = activityLanes(data.rows);
+  const { replied, bounced, inSequence } = activityLanes(data.rows.filter((r) => !dz.is("outreach", r.outreach_id)));
   if (!data.rows.length) return <p className="muted small">Nothing sent through Apollo in the last 30 days.</p>;
   return (
     <div className="sent-body">
@@ -93,16 +95,23 @@ function SentRow({ r, kind }: { r: ActivityRow; kind: "replied" | "bounced" | "s
           <button type="button" className="btn small" disabled={busy} onClick={() => void toDeal()}>{busy ? "Opening…" : "Move to deal"}</button>
         </div>
       )}
+      <DismissButton onClick={() => void dismissWithUndo("outreach", r.outreach_id, `${who}: sent email`)} />
     </li>
   );
 }
 
-/** Emails approved under the old scheduled sending and never sent: folded away, reviewed or parked in one go. */
+const OLDER_APPROVED_REF = "older-approved";
+
+/**
+ * Emails approved under the old scheduled sending and never sent: folded away, reviewed (newest first) or parked in
+ * one go. X hides this reminder; each email can also be dismissed one by one in Review.
+ */
 export function OlderApproved() {
   const { data, reload } = useLoad(oldApprovedLoad, "old-approved");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
-  if (!data || data.count === 0) return null;
+  const dz = useDismissed();
+  if (!data || data.count === 0 || dz.is("other", OLDER_APPROVED_REF)) return null;
   const parkAll = async () => {
     setBusy(true);
     try {
@@ -121,7 +130,9 @@ export function OlderApproved() {
     <details className="old-approved">
       <summary>
         <span>Older approved (pre-27 Oct style)</span>
-        <span className="muted small">{fmtNumber(data.count)} not sent</span>
+        <span className="muted small">{fmtNumber(data.count)} not sent
+          <DismissButton onClick={() => void dismissWithUndo("other", OLDER_APPROVED_REF, "Older approved (pre-27 Oct style) reminder")} />
+        </span>
       </summary>
       <p className="muted small">Approved under the old scheduled sending and written before the new outbound style. None of these will be sent unless you press Send on each.</p>
       <div className="action-row">

@@ -30,6 +30,7 @@ const MORE: { name: string; items: Item[] }[] = [
       { to: "/contacts", label: "Contacts", icon: "contacts" },
       { to: "/deals", label: "Deals", icon: "deals" },
       { to: "/outreach", label: "Outreach log", icon: "outreach" },
+      { to: "/dismissed", label: "Dismissed", icon: "close" },
     ],
   },
   {

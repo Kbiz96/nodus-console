@@ -224,12 +224,20 @@ export interface OwedRow {
   /** The ready Gmail draft, or a Gmail search for the thread when no draft link is known. */
   url: string;
   ready: boolean;
+  /** What X records: a reply from the brief by its stable key, a logged reply by its outreach row. */
+  dismiss: { kind: "brief_reply" | "outreach"; ref: string };
 }
 
 type BriefReplyLike = { who: string; company: string; summary: string; gmail_draft_url: string | null };
 type RepliedRow = Pick<Outreach, "id" | "to_name" | "to_email" | "company" | "subject" | "replied_at">;
 
 const norm = (s: string | null | undefined) => (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+
+/** A stable key for a reply owed from the brief (the brief is rewritten daily): its Gmail draft link, else who|company. */
+export function briefReplyRef(r: { who: string | null | undefined; company: string | null | undefined; gmail_draft_url?: string | null }): string {
+  const url = (r.gmail_draft_url ?? "").trim();
+  return url || `${norm(r.who)}|${norm(r.company)}`;
+}
 
 /**
  * Replies owed: the brief's list first (each with its Gmail draft), then replies logged in outreach that the brief
@@ -243,6 +251,7 @@ export function repliesOwed(brief: BriefReplyLike[], logged: RepliedRow[]): Owed
     summary: r.summary,
     url: r.gmail_draft_url ?? gmailSearchUrl([r.who, r.company].filter(Boolean).join(" ")),
     ready: Boolean(r.gmail_draft_url),
+    dismiss: { kind: "brief_reply" as const, ref: briefReplyRef(r) },
   }));
   const names = new Set(brief.map((r) => norm(r.who)).filter(Boolean));
   const firms = new Set(brief.map((r) => norm(r.company)).filter(Boolean));
@@ -255,6 +264,7 @@ export function repliesOwed(brief: BriefReplyLike[], logged: RepliedRow[]): Owed
       summary: o.subject ? `Replied to “${o.subject}”` : "Replied",
       url: gmailSearchUrl(o.to_email || o.to_name || o.company || ""),
       ready: false,
+      dismiss: { kind: "outreach", ref: o.id },
     });
   }
   return out;
