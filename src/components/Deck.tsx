@@ -3,8 +3,8 @@ import { Link } from "react-router-dom";
 import { supabase, must } from "../lib/supabase.ts";
 import { useLoad } from "../lib/useLoad.ts";
 import { copyNow, withSignoff, deckFit, outreachChanged, outreachDecide, outreachHold, outreachMarkSent, outreachUnpark } from "../lib/data.ts";
-import { HOLD_REASONS, companyClashes, deckGroups, frontGroup, type Clash, type HoldKey } from "../lib/deck.ts";
-import { DECK_STATUSES, activeInOrder, deckOrder, isLinkedIn, priorityPrompt } from "../lib/focus.ts";
+import { HOLD_REASONS, companyClashes, deckGroups, frontGroup, newestFirst, type Clash, type HoldKey } from "../lib/deck.ts";
+import { DECK_STATUSES, activeInOrder, isLinkedIn, priorityPrompt } from "../lib/focus.ts";
 import { sendStatusText, sentText, type SendState } from "../lib/today.ts";
 import { STOP_ALL, gmailSend, sendFailText, type SendFail } from "../lib/send.ts";
 import { apolloFailText, type ApolloFail } from "../lib/apollo.ts";
@@ -19,13 +19,14 @@ import { AskClaude } from "./PriorityCard.tsx";
 import { Icon } from "./Brand.tsx";
 import { ErrorBox, Loading } from "./ui.tsx";
 import { toast } from "./Toast.tsx";
+import { DismissButton, dismissWithUndo, useDismissed } from "./Dismiss.tsx";
 
 interface Person { id: string; title: string | null; linkedin: string | null }
 
 async function load(priorityId: string | null, opportunityId: string | null = null, emailOnly = false, oldApproved = false) {
   let q = oldApproved
-    ? supabase.from("outreach").select(OUTREACH_COLS).eq("status", "approved").is("sent_at", null).order("approved_at", { ascending: true }).limit(300)
-    : supabase.from("outreach").select(OUTREACH_COLS).in("status", [...DECK_STATUSES]).order("created_at", { ascending: true }).limit(300);
+    ? supabase.from("outreach").select(OUTREACH_COLS).eq("status", "approved").is("sent_at", null).order("created_at", { ascending: false }).limit(300)
+    : supabase.from("outreach").select(OUTREACH_COLS).in("status", [...DECK_STATUSES]).order("created_at", { ascending: false }).limit(300);
   if (priorityId) q = q.eq("priority_id", priorityId);
   if (opportunityId) q = q.eq("opportunity_id", opportunityId);
   // Parked drafts never reach the deck (the status filter already leaves them out; this keeps it so).
@@ -45,9 +46,10 @@ async function load(priorityId: string | null, opportunityId: string | null = nu
 type Done = { text: string; ok: boolean };
 
 /**
- * One email at a time, Send first: Send (it goes from Gmail now), Hold (parked, with a reason),
+ * One email at a time, newest draft first, Send first: Send (it goes from Gmail now), Hold (parked, with a reason),
  * Edit, Skip. There is no approve step. Cards are grouped by mandate with counts; when two drafts go to the same
  * company, the higher-fit one comes first and Send holds the other as a second contact at the same firm.
+ * X dismisses a card (a draft is skipped, so it is never sent), with Undo.
  * LinkedIn: Kuran always sends it himself: copy and open the profile, then mark it sent.
  * `emailOnly` keeps LinkedIn out (Today has its own LinkedIn panel). `oldApproved` reviews the older approved queue.
  */
@@ -65,30 +67,31 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
   const [queue, setQueue] = useState<string[] | null>(null);
   const [handled, setHandled] = useState(0);
   const [last, setLast] = useState<Done | null>(null);
+  const dz = useDismissed();
 
   const byId = useMemo(() => new Map((data?.rows ?? []).map((r) => [r.id, r])), [data]);
   const prioById = useMemo(() => new Map(priorities.map((p) => [p.id, p])), [priorities]);
 
-  // Order once per load (or when the priorities' order changes); afterwards the queue only shrinks or rotates,
-  // so cards never jump about while Kuran works through them. Lower-fit second contacts at a firm go to the back.
-  const psig = priorities.map((p) => `${p.id}:${p.rank}:${p.status}`).join(",");
-  const prioRef = useRef(priorities);
-  prioRef.current = priorities;
+  // Newest draft first, ordered once per load; afterwards the queue only shrinks or rotates, so cards never jump
+  // about while Kuran works through them. Lower-fit second contacts at a firm go to the back (one email per
+  // company). Mandate groups are a secondary view: the chips above the card bring one group forward.
   useEffect(() => {
     if (!data) return;
-    const ordered = deckOrder(data.rows, prioRef.current).map((r) => r.id);
+    const ordered = newestFirst(data.rows).map((r) => r.id);
     const clashes = companyClashes(data.rows.filter((r) => !isLinkedIn(r)), data.fit);
     const back = new Set([...clashes.values()].flatMap((c) => c.others));
     setQueue([...ordered.filter((id) => !back.has(id)), ...ordered.filter((id) => back.has(id))]);
     setHandled(0);
-  }, [data, psig]);
+  }, [data]);
 
-  const queued = useMemo(() => (queue ?? []).map((id) => byId.get(id)).filter((r): r is Outreach => Boolean(r)), [queue, byId]);
+  // Dismissed cards (X) drop out at once and come back on Undo, in the same place.
+  const live = useMemo(() => (queue ?? []).filter((id) => !dz.keys.has(`outreach:${id}`)), [queue, dz.keys]);
+  const queued = useMemo(() => live.map((id) => byId.get(id)).filter((r): r is Outreach => Boolean(r)), [live, byId]);
   const clashes = useMemo(() => companyClashes(queued.filter((r) => !isLinkedIn(r)), data?.fit ?? new Map()), [queued, data]);
   const groups = useMemo(() => deckGroups(queued, priorities), [queued, priorities]);
 
-  const current = queue && queue.length ? byId.get(queue[0]) ?? null : null;
-  const total = handled + (queue?.length ?? 0);
+  const current = queued[0] ?? null;
+  const total = handled + queued.length;
 
   // Undo a hold: the drafts come back to the front of the queue.
   const restore = useCallback(async (ids: string[]) => {
@@ -108,7 +111,12 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
   const advance = useCallback((done: Done | null, rotate = false, alsoGone: string[] = []) => {
     setQueue((q) => {
       if (!q || !q.length) return q;
-      const rest = rotate ? [...q.slice(1), q[0]] : q.slice(1);
+      // The card on screen is the first one not dismissed.
+      const i = q.findIndex((id) => !dz.keys.has(`outreach:${id}`));
+      if (i < 0) return q;
+      const head = q[i];
+      const without = [...q.slice(0, i), ...q.slice(i + 1)];
+      const rest = rotate ? [...without, head] : without;
       return alsoGone.length ? rest.filter((id) => !alsoGone.includes(id)) : rest;
     });
     if (!rotate) setHandled((h) => h + 1 + alsoGone.length);
@@ -117,7 +125,7 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
       outreachChanged();
       onChanged?.();
     }
-  }, [onChanged]);
+  }, [onChanged, dz.keys]);
 
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
   if ((loading && !data) || !queue) return <Loading what="Getting your drafts…" />;
@@ -217,17 +225,26 @@ export default function Deck({ priorities, priorityId = null, opportunityId = nu
         clash={clash}
         siblings={siblings}
         fitOf={(id) => data?.fit.get(id) ?? null}
-        canLater={queue.length > 1}
+        canLater={queued.length > 1}
         sendEnabled={sendEnabled}
         onDone={advance}
         onUndo={restore}
         onLater={() => advance(null, true)}
+        onDismiss={() => void dismissWithUndo("outreach", current.id, dismissLabel(current), { status: current.status, onChange: onChanged })}
       />
     </div>
   );
 }
 
-function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, sendEnabled, onDone, onUndo, onLater }: {
+/** How a dismissed email or message is named on the Dismissed page. */
+export function dismissLabel(o: Pick<Outreach, "to_name" | "to_email" | "company" | "subject" | "channel" | "kind">): string {
+  const who = o.to_name || o.to_email || "Unnamed recipient";
+  const at = o.company && o.company !== who ? ` at ${o.company}` : "";
+  const what = isLinkedIn(o) ? "LinkedIn" : o.subject ? `“${o.subject}”` : "email";
+  return `${who}${at}: ${what}`;
+}
+
+function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, sendEnabled, onDone, onUndo, onLater, onDismiss }: {
   o: Outreach;
   person: Person | null;
   priority: Priority | null;
@@ -240,6 +257,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
   onDone: (d: Done, rotate?: boolean, alsoGone?: string[]) => void;
   onUndo: (ids: string[]) => void;
   onLater: () => void;
+  onDismiss: () => void;
 }) {
   const li = isLinkedIn(o);
   const manual = o.status === "manual";
@@ -372,6 +390,7 @@ function DeckCard({ o, person, priority, fit, clash, siblings, fitOf, canLater, 
         {fit !== null && <span className="ctag">Fit {Math.round(fit)}</span>}
         {manual && <span className="ctag">Approved, not sent yet</span>}
         {o.status === "approved" && !li && <span className="ctag">Older approved</span>}
+        <DismissButton onClick={onDismiss} />
       </div>
       <div className="deck-who">
         <h3>{who}</h3>

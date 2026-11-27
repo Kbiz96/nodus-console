@@ -26,13 +26,25 @@ Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works
   Background BD. This is where leads are approved in bulk and handed to Claude for outbound.
 - Claude links never ask for a paste: an instruction too long for a link is cut at a line end with a note telling
   Claude to look up the rest (`src/lib/claude.ts`). Calm mode is on by default on Today and Pipeline.
+- **X to dismiss**: every card and row on Today (On the desk, Send email deck, Older approved, Sent & replies,
+  LinkedIn, Replies owed, Today's plan, Priorities and lead lanes), Review, Pipeline and the Outreach log has a quiet X
+  (top right). It hides the item at once and shows **Undo** for 8 seconds. An email still waiting to go (draft or
+  approved) is also skipped through `outreach_decide`, so it is never sent and the counts drop; Undo puts it back. For
+  everything else (sent emails, replies, deals, contacts, plan items, mandates) X only records a row in
+  `console_dismissals` (kind + ref); deal stages and contact data never change. Plan items are dismissed for that day
+  only. Leads desk leads keep their own Dismiss. Rules in `src/lib/dismiss.ts` (unit-tested).
+- **Dismissed** (`#/dismissed`, under More): everything cleared with X, newest first, with Restore on each and
+  Restore all (a skipped email comes back as it was).
+- **Newest first**: every email list (the Send deck on Today, Review, Older approved and the Outreach log) shows the
+  newest draft first (`created_at` descending). Review keeps one email per company (lower-fit second contacts go to
+  the back) and the mandate chips, which bring one mandate forward. LinkedIn lists keep their own Sort menu.
 - **Parked drafts** (`outreach.status = 'parked'`) never appear in Review, counts, badges or LinkedIn lists. Outreach
   has a collapsed "Parked (n)" list with **Bring back**, which sets the draft back to `draft`.
 - **Enrich & draft** (opportunity page, Engine panel, Matches): asks for decision makers through `enrich_request` (the
   same path as Enrich) and opens Claude to enrich with Apollo and draft first touches for approval.
 - **Review** (`#/review`, `#/review?priority=<id>`, `#/review?old=1` for the older approved queue): the deck on its
-  own. Email: Send (from Gmail, now), Hold (parked with a reason: second contact at same firm, live account, later, other),
-  Edit, Skip, Later; grouped by mandate with counts; one email per company (the higher-fit draft first; Send holds the
+  own, newest draft first. Email: Send (from Gmail, now), Hold (parked with a reason: second contact at same firm, live
+  account, later, other), Edit, Skip, Later, X (dismiss); mandate chips with counts; one email per company (the higher-fit draft first; Send holds the
   others). LinkedIn: Copy & open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: S send,
   H hold, E edit, K skip, C copy, L later. Hold has Undo.
 - **Priorities** (`#/priorities`): edit, reorder, pause, mark done, add. Writes go straight to `priorities` (RLS).

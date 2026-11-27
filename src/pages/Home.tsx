@@ -23,6 +23,8 @@ import { HandoffContext } from "../components/handoff.ts";
 import { Icon } from "../components/Brand.tsx";
 import { ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 import { usePriorities } from "./Leads.tsx";
+import { DismissButton, dismissWithUndo, useDismissed } from "../components/Dismiss.tsx";
+import { filterDismissed } from "../lib/dismiss.ts";
 
 const TABS = ["send", "linkedin", "replies", "questions", "plan"] as const;
 type Tab = (typeof TABS)[number];
@@ -108,11 +110,15 @@ export default function Home() {
   }, []);
 
   const brief: Brief | null = briefQ.data ?? null;
+  // X hides an item; plan items are dismissed for today only (the brief is rewritten every morning).
+  const dz = useDismissed();
+  const planRef = (d: DoItem) => `${day}|${d.key}`;
+  const dismissPlan = (d: DoItem) => void dismissWithUndo("brief_focus", planRef(d), d.text);
   // Sending is a press of Send (from Gmail); the line also says when the last email went out, when known.
   const sendEnabled = sendState(liveQ.data?.lastSentAt ?? null);
-  const owed = repliesOwed(brief?.replies ?? [], repliedQ.data ?? []);
-  const live = liveQ.data ? liveItems({ ...liveQ.data, replies: owed.length }, sendEnabled) : [];
-  const { now: session, overflow } = focusSession(briefItems(brief?.do_now ?? [], liveQ.data ?? null), live);
+  const owed = repliesOwed(brief?.replies ?? [], repliedQ.data ?? []).filter((r) => !dz.is(r.dismiss.kind, r.dismiss.ref));
+  const live = filterDismissed(liveQ.data ? liveItems({ ...liveQ.data, replies: owed.length }, sendEnabled) : [], "brief_focus", planRef, dz.keys);
+  const { now: session, overflow } = focusSession(filterDismissed(briefItems(brief?.do_now ?? [], liveQ.data ?? null), "brief_focus", planRef, dz.keys), live);
   const could = couldDo(overflow, brief?.could_do ?? []);
   const forClaude = session.filter((d) => d.action.kind === "claude" && !done.has(d.key));
   const waiting = briefQ.loading && !briefQ.data;
@@ -151,7 +157,7 @@ export default function Home() {
             <Link to="/deals" className="small muted">All deals</Link>
           </span>
         </div>
-        <Desk q={deskQ} today={day} />
+        <Desk q={deskQ} today={day} hide={(id) => dz.is("deal", id)} />
       </section>
 
       <section className="work" id="work" aria-label="Work">
@@ -166,7 +172,7 @@ export default function Home() {
         <div className="work-panel" role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
           {tab === "send" && (
             <div id="approve">
-              <p className="muted small work-hint">Emails one at a time. Approve, edit or skip; Send goes from Gmail.</p>
+              <p className="muted small work-hint">Emails one at a time, newest draft first. Send, edit or skip; X clears one away. Send goes from Gmail.</p>
               <Deck priorities={priorities} onChanged={prioQ.reload} emailOnly sendEnabled={sendEnabled} />
               <OlderApproved />
               <SentLane />
@@ -196,7 +202,7 @@ export default function Home() {
               ) : (
                 <ol className="donow" aria-label="Today’s plan">
                   {session.map((d, i) => (
-                    <DoRow key={d.key} d={d} n={i + 1} first={i === 0} done={done.has(d.key)} onDone={d.live ? undefined : () => toggleDone(d.key)} />
+                    <DoRow key={d.key} d={d} n={i + 1} first={i === 0} done={done.has(d.key)} onDone={d.live ? undefined : () => toggleDone(d.key)} onDismiss={() => dismissPlan(d)} />
                   ))}
                 </ol>
               )}
@@ -284,10 +290,10 @@ function deskWhat(d: DeskDeal): string | null {
   return i > 0 ? d.deal!.slice(i + 1).trim() : null;
 }
 
-function Desk({ q, today }: { q: { data: DeskDeal[] | null; error: unknown; loading: boolean; reload: () => void }; today: string }) {
+function Desk({ q, today, hide }: { q: { data: DeskDeal[] | null; error: unknown; loading: boolean; reload: () => void }; today: string; hide: (id: string) => boolean }) {
   if (q.error && !q.data) return <ErrorBox error={q.error} onRetry={q.reload} />;
   if (q.loading && !q.data) return <Loading what="Getting the desk…" />;
-  const rows = q.data ?? [];
+  const rows = (q.data ?? []).filter((d) => !hide(d.id));
   if (rows.length === 0) return <p className="donow-empty">Nothing on the desk. Mark a deal Hot on the Deals page to pin it here.</p>;
   return (
     <ul className="desk-grid">
@@ -296,8 +302,9 @@ function Desk({ q, today }: { q: { data: DeskDeal[] | null; error: unknown; load
         const late = due != null && due < today;
         const isToday = due === today;
         return (
-          <li key={d.id} className={`desk-card${late ? " is-late" : ""}`}>
-            <Link to={`/deals?id=${d.id}`} className="desk-link">
+          <li key={d.id} className={`desk-card has-x${late ? " is-late" : ""}`}>
+            <DismissButton className="at-corner" onClick={() => void dismissWithUndo("deal", d.id, deskName(d))} />
+            <Link to={`/deals?id=${d.id}`} className="desk-link desk-link-x">
               <div className="desk-top">
                 <span className="desk-name">{deskName(d)}</span>
                 {d.stage && <span className="desk-stage">{d.stage}</span>}
@@ -327,7 +334,8 @@ function Replies({ rows, loading }: { rows: OwedRow[]; loading: boolean }) {
   return (
     <ul className="owed">
       {rows.map((r) => (
-        <li key={r.key} className="owed-row">
+        <li key={r.key} className="owed-row has-x pad-x">
+          <DismissButton className="at-corner" onClick={() => void dismissWithUndo(r.dismiss.kind, r.dismiss.ref, r.company ? `${r.who} at ${r.company}` : r.who, { status: "replied" })} />
           <div className="owed-what">
             <p className="owed-who"><strong>{r.who}</strong>{r.company && <span className="muted"> at {r.company}</span>}</p>
             {r.summary && <p className="owed-sum">{r.summary}</p>}
@@ -350,7 +358,7 @@ function DoAct({ d, className }: { d: DoItem; className: string }) {
   return null;
 }
 
-function DoRow({ d, n, first, done, onDone }: { d: DoItem; n: number; first: boolean; done: boolean; onDone?: () => void }) {
+function DoRow({ d, n, first, done, onDone, onDismiss }: { d: DoItem; n: number; first: boolean; done: boolean; onDone?: () => void; onDismiss: () => void }) {
   const viaClaude = d.action.kind === "claude";
   return (
     <li className={`do-row${done ? " is-done" : ""}${d.live ? " is-live" : ""}`}>
@@ -366,6 +374,7 @@ function DoRow({ d, n, first, done, onDone }: { d: DoItem; n: number; first: boo
             <Icon.check />
           </button>
         )}
+        <DismissButton onClick={onDismiss} />
       </div>
     </li>
   );

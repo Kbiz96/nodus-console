@@ -9,10 +9,12 @@ import type { Deal, Priority, PriorityProgress } from "../lib/types.ts";
 import { MandateCard } from "./MandateCard.tsx";
 import { HandoffContext } from "./handoff.ts";
 import { Icon } from "./Brand.tsx";
+import { DismissButton, dismissWithUndo, useDismissed } from "./Dismiss.tsx";
 
 /**
  * Signed mandates on Today: one line each (rank, title, paperwork, next step, overdue flag). A tap opens the full
- * card underneath, without its Claude buttons (those live on the Leads desk).
+ * card underneath, without its Claude buttons (those live on the Leads desk). X hides a line from Today only (the
+ * priority itself is not changed; Priorities still lists it).
  */
 export function MandateRows({ priorities, progress, onChanged }: {
   priorities: Priority[];
@@ -24,7 +26,9 @@ export function MandateRows({ priorities, progress, onChanged }: {
   const ids = [...new Set(active.flatMap((p) => p.deal_ids ?? []))].sort();
   const { data: deals } = useLoad(() => priorityDeals(ids), `deals-${ids.join(",")}`);
   const dealMap = deals ?? new Map<string, Deal>();
-  const groups = groupPriorities(active, (id) => dealMap.get(id)?.deal ?? null);
+  const dz = useDismissed();
+  const groups = groupPriorities(active, (id) => dealMap.get(id)?.deal ?? null).filter((g) => !dz.is("mandate", g.key));
+  if (groups.length === 0 && active.length > 0) return <p className="empty">All live mandates are dismissed from Today. <Link to="/dismissed">See Dismissed</Link>.</p>;
   if (groups.length === 0) return <p className="empty">No live mandates. Add one on <Link to="/priorities">Priorities</Link>.</p>;
   return (
     <ol className="mrows">
@@ -36,7 +40,8 @@ export function MandateRows({ priorities, progress, onChanged }: {
         const open = openKey === g.key;
         const rank = Math.min(...g.members.map((m) => m.rank));
         return (
-          <li key={g.key} className={`mrow${open ? " is-open" : ""}${next?.overdue ? " is-late" : ""}`}>
+          <li key={g.key} className={`mrow has-x${open ? " is-open" : ""}${next?.overdue ? " is-late" : ""}`}>
+            <DismissButton className="at-corner" onClick={() => void dismissWithUndo("mandate", g.key, g.name)} />
             <button type="button" className="mrow-line" aria-expanded={open} aria-controls={`mrow-${g.key}`} onClick={() => setOpenKey(open ? null : g.key)}>
               <span className="mrow-rank" aria-label={`Priority ${rank}`}>{rank}</span>
               <span className="mrow-title">{g.name}</span>

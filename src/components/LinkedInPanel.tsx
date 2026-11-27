@@ -9,6 +9,8 @@ import type { Outreach } from "../lib/types.ts";
 import { Icon } from "./Brand.tsx";
 import { AskClaude } from "./PriorityCard.tsx";
 import { toast } from "./Toast.tsx";
+import { DismissButton, dismissWithUndo, useDismissed } from "./Dismiss.tsx";
+import { dismissLabel } from "./Deck.tsx";
 import { GROWTH_ACTIONS, firstComment, postComposeUrl, postTarget, postType, publishSlot } from "../lib/linkedinGrowth.ts";
 import { fitOf, isSortKey, laneTag, postDate, shortDay, sortLinkedIn, sortOptions, type LiListKind, type LiSortKey } from "../lib/liSort.ts";
 
@@ -71,7 +73,8 @@ export function LinkedInPanel() {
   const [dmSort, setDmSort] = useSort("dm");
   const [noteSort, setNoteSort] = useSort("note");
   const [commentSort, setCommentSort] = useSort("comment");
-  const all = (data?.rows ?? []).filter((r) => !gone.has(r.id));
+  const dz = useDismissed();
+  const all = (data?.rows ?? []).filter((r) => !gone.has(r.id) && !dz.is("outreach", r.id));
   const rows = all.filter((r) => lane === "ALL" || laneOf(r) === lane);
   const split = splitLinkedIn(rows, notes);
   const ready = sortLinkedIn(split.ready, dmSort);
@@ -171,6 +174,11 @@ function Who({ o }: { o: Outreach }) {
   );
 }
 
+/** X on a LinkedIn row: a draft is skipped (never sent); anything else is only hidden. Undo brings it back. */
+function LiX({ o }: { o: Outreach }) {
+  return <DismissButton className="at-corner" onClick={() => void dismissWithUndo("outreach", o.id, o.kind === "post" ? "LinkedIn post" : dismissLabel(o), { status: o.status })} />;
+}
+
 
 // ---------- one-click copy + open ----------
 
@@ -225,7 +233,8 @@ function ReadyRow({ o, profile, onSent }: { o: Outreach; profile: string | null;
     }
   };
   return (
-    <li className="li-row">
+    <li className="li-row has-x pad-x">
+      <LiX o={o} />
       <Who o={o} />
       <Meta o={o} />
       {whyLine(o.note) && <p className="muted small li-post">Why them: {whyLine(o.note)}</p>}
@@ -255,7 +264,8 @@ function NoteRow({ o, contact, profile, onDone }: { o: Outreach; contact: LiCont
     }
   };
   return (
-    <li className="li-row">
+    <li className="li-row has-x pad-x">
+      <LiX o={o} />
       <Who o={o} />
       <Meta o={o} />
       {note ? <p className="li-msg li-note">{note}</p> : <p className="li-msg muted">No connection note drafted. A short hello works.</p>}
@@ -338,7 +348,8 @@ function CommentRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
     }
   };
   return (
-    <li className="li-row">
+    <li className="li-row has-x pad-x">
+      <LiX o={o} />
       <Who o={o} />
       <Meta o={o} comment />
       {opening && <p className="muted small li-post">On the post: “{opening}…”</p>}
@@ -399,7 +410,8 @@ function PostRow({ o, onDone }: { o: Outreach; onDone: () => void }) {
     }
   };
   return (
-    <li className="li-row">
+    <li className="li-row has-x pad-x">
+      <LiX o={o} />
       <div className="li-who">
         <strong>{page ? "Nodus page" : "Your profile"}</strong>
         {meta && <span className="muted"> · {meta}</span>}

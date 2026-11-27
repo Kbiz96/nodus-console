@@ -1633,3 +1633,28 @@ details.home-mandates > summary > span:first-child::before { content: "+"; displ
 details.home-mandates[open] > summary > span:first-child::before { content: "−"; }
 .desk-acts { display: inline-flex; align-items: center; gap: 0.9rem; }
 .desk-acts .btn svg { width: 15px; height: 15px; }
+
+/* X to dismiss (src/components/Dismiss.tsx): quiet in the corner of a card or row, clear on hover or focus. */
+.x-dismiss { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; flex-shrink: 0; background: none; border: 1px solid transparent; color: var(--ink-4); cursor: pointer; }
+.x-dismiss svg { width: 14px; height: 14px; stroke-width: 2; }
+.x-dismiss:hover { color: var(--bad); border-color: rgba(255, 138, 122, 0.45); background: var(--bad-soft); }
+.x-dismiss:focus-visible { outline: 2px solid var(--teal-hi); outline-offset: 1px; color: var(--ink); }
+.has-x { position: relative; }
+.has-x > .x-dismiss.at-corner { position: absolute; top: 0.3rem; right: 0.3rem; z-index: 1; }
+.has-x.pad-x { padding-right: 2.6rem; }
+.deck-tags .x-dismiss { margin-left: auto; margin-top: -0.35rem; margin-right: -0.5rem; }
+.old-approved > summary .x-dismiss, .home-mandates > summary .x-dismiss { margin-left: 0.25rem; }
+@media (max-width: 639px) { .x-dismiss { width: 40px; height: 40px; } .has-x.pad-x { padding-right: 3rem; } }
+
+/* Dismissed page */
+.dismissed-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); background: rgba(16, 24, 23, 0.7); }
+.dismissed-list li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; padding: 0.75rem 0.9rem; border-top: 1px solid var(--line-soft); }
+.dismissed-list li:first-child { border-top: 0; }
+.dismissed-main { min-width: 0; flex: 1 1 16rem; overflow-wrap: anywhere; }
+.dismissed-main strong { color: var(--ink); font-weight: 500; }
+.dismissed-meta { margin: 0.15rem 0 0; font: 400 12px/1.4 var(--mono); color: var(--ink-3); }
+.desk-link-x .desk-top { padding-right: 1.9rem; }
+.old-approved > summary > span:last-child { display: inline-flex; align-items: center; gap: 0.3rem; }
+.sent-row .sent-who { flex: 1 1 12rem; }
+.mrow.has-x > .mrow-line { padding-right: 2.6rem; }
+.do-acts .x-dismiss { margin-left: auto; }
