@@ -52,7 +52,7 @@ Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works
   won, closed), the Gmail thread and the next step, kept in `board_listings.spec.req`. **Reply** writes the fitting reply
   (options for a named lot, questions for a thin request, "we'll screen" for a full one), always with the booking link;
   Copy or Open in Gmail. **Add a request from email** logs an email request (`source = nodusx-request`, status `private`).
-  Requests are kept out of the screening queues. Rules in `src/lib/nodusxRequests.ts` (unit-tested).
+  Each request is screened: category (direct buyer, referrer, reseller, supply), legitimacy and urgency (low to high) and a screening note; the list sorts open first, then by priority (legitimacy counts double, a direct buyer gets a point). Requests are kept out of the screening queues. Rules in `src/lib/nodusxRequests.ts` (unit-tested).
 - **Priorities** (`#/priorities`): edit, reorder, pause, mark done, add. Writes go straight to `priorities` (RLS).
 - The old cockpit is the **Daily report** at `#/today` (approvals point to Today). Map and Engine leave critical power out by default; the line toggle brings it back
   (`?lines=all` on Map, `?line=all` on Engine).

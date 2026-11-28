@@ -20,7 +20,30 @@ export const REQ_STATUS: { key: ReqStatus; label: string; open: boolean }[] = [
   { key: "closed", label: "Closed", open: false },
 ];
 
-export interface ReqState { status?: ReqStatus; gmail?: string; next?: string; updated?: string }
+export type ReqCategory = "direct_buyer" | "referrer" | "reseller" | "supply" | "unscreened";
+export const CATEGORY_LABEL: Record<ReqCategory, string> = {
+  direct_buyer: "Direct buyer", referrer: "Referrer (introduces a buyer)", reseller: "Reseller (buys to resell)",
+  supply: "Supply (operator or site)", unscreened: "Not screened yet",
+};
+/** 1 low, 2 medium, 3 high. */
+export type Level = 1 | 2 | 3;
+export interface ReqState {
+  status?: ReqStatus; gmail?: string; next?: string; updated?: string;
+  category?: ReqCategory; legit?: Level; urgency?: Level; screen?: string;
+}
+
+/** Legitimacy counts double: a real party that can wait beats an urgent one we can't verify. Unscreened sorts last. */
+export function priority(l: Pick<NxListing, "spec">): number {
+  const r = reqState(l);
+  if (!r.legit || !r.urgency) return 0;
+  return r.legit * 2 + r.urgency + (r.category === "direct_buyer" ? 1 : 0);
+}
+
+/** Open first, then by priority, then newest. */
+export function rankRequests<T extends Pick<NxListing, "spec" | "created_at">>(rows: T[]): T[] {
+  return [...rows].sort((a, b) =>
+    Number(isOpen(b)) - Number(isOpen(a)) || priority(b) - priority(a) || Date.parse(b.created_at) - Date.parse(a.created_at));
+}
 export type ReplyKind = "lot" | "info" | "screen";
 
 const REF_RE = /\bNX-\d{1,4}\b/i;

@@ -7,8 +7,8 @@ import { toast } from "../components/Toast.tsx";
 import { Empty, ErrorBox, Loading } from "../components/ui.tsx";
 import { summarise, type NxListing } from "../lib/nodusx.ts";
 import {
-  CALL_LINK, REQUEST_SOURCE, REQ_STATUS, composeLink, isOpen, isRequest, replyKind, replyText, reqState, reqStatus, requestedRef,
-  type ReplyKind, type ReqStatus,
+  CALL_LINK, CATEGORY_LABEL, REQUEST_SOURCE, REQ_STATUS, priority, rankRequests, composeLink, isOpen, isRequest, replyKind, replyText, reqState, reqStatus, requestedRef,
+  type Level, type ReplyKind, type ReqCategory, type ReqStatus,
 } from "../lib/nodusxRequests.ts";
 
 const COLS = "id,created_at,side,kind,mw,gpus,gpu_model,market,timing,note,note_original,email,company,role,status,origin,source,deal,spec,ref,crm_contact_id,diligence,review_note,reject_reason,info_requested,reviewed_at,decision_emailed_at,decision_email,public_snapshot,published_at";
@@ -32,7 +32,7 @@ export default function NodusXRequests() {
   const [adding, setAdding] = useState(false);
   const all = useMemo(() => (data ?? []).filter(isRequest), [data]);
   const live = useMemo(() => (data ?? []).filter((l) => l.status === "approved" || l.status === "verified"), [data]);
-  const rows = show === "open" ? all.filter(isOpen) : all;
+  const rows = rankRequests(show === "open" ? all.filter(isOpen) : all);
   const owed = all.filter((l) => reqStatus(l) === "new").length;
 
   if (error && !data) return <ErrorBox error={error} onRetry={reload} />;
@@ -63,6 +63,7 @@ function RequestRow({ l, live, onDone }: { l: NxListing; live: NxListing[]; onDo
   const [open, setOpen] = useState(false);
   const [gmail, setGmail] = useState(st.gmail ?? "");
   const [next, setNext] = useState(st.next ?? "");
+  const [screen, setScreen] = useState(st.screen ?? "");
   const reply = replyText(l, kind, live);
   const [body, setBody] = useState(reply.body);
   const [busy, setBusy] = useState(false);
@@ -83,6 +84,17 @@ function RequestRow({ l, live, onDone }: { l: NxListing; live: NxListing[]; onDo
           {REQ_STATUS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
       </div>
+      <div className="row gap wrap small">
+        <select value={st.category ?? "unscreened"} disabled={busy} onChange={(e) => update({ category: e.target.value as ReqCategory }, "Saved")}>
+          {(Object.keys(CATEGORY_LABEL) as ReqCategory[]).map((k) => <option key={k} value={k}>{CATEGORY_LABEL[k]}</option>)}
+        </select>
+        <label>Legitimacy <select value={st.legit ?? ""} disabled={busy} onChange={(e) => update({ legit: Number(e.target.value) as Level }, "Saved")}>
+          <option value="">–</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></label>
+        <label>Urgency <select value={st.urgency ?? ""} disabled={busy} onChange={(e) => update({ urgency: Number(e.target.value) as Level }, "Saved")}>
+          <option value="">–</option><option value="1">Low</option><option value="2">Medium</option><option value="3">High</option></select></label>
+        <span className="muted">Priority {priority(l) || "–"}</span>
+      </div>
+      {st.screen && <p className="small">Screening: {st.screen}</p>}
       <div>{summarise(l)}</div>
       {(l.note_original || l.note) && <p className="small muted">{l.note_original ?? l.note}</p>}
       <div className="row gap wrap small">
@@ -107,7 +119,8 @@ function RequestRow({ l, live, onDone }: { l: NxListing; live: NxListing[]; onDo
           <div className="row gap wrap">
             <input placeholder="Gmail thread link" value={gmail} onChange={(e) => setGmail(e.target.value)} />
             <input placeholder="Next step" value={next} onChange={(e) => setNext(e.target.value)} />
-            <button type="button" className="btn ghost" disabled={busy} onClick={() => update({ gmail: gmail.trim() || undefined, next: next.trim() || undefined }, "Saved")}>Save</button>
+            <input placeholder="Screening note" value={screen} onChange={(e) => setScreen(e.target.value)} />
+            <button type="button" className="btn ghost" disabled={busy} onClick={() => update({ gmail: gmail.trim() || undefined, next: next.trim() || undefined, screen: screen.trim() || undefined }, "Saved")}>Save</button>
           </div>
         </div>
       )}

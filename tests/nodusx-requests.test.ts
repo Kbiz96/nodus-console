@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { type NxListing } from "../src/lib/nodusx.ts";
-import { CALL_LINK, isOpen, isRequest, optionsFor, replyKind, replyText, reqStatus, requestedRef } from "../src/lib/nodusxRequests.ts";
+import { CALL_LINK, priority, rankRequests, isOpen, isRequest, optionsFor, replyKind, replyText, reqStatus, requestedRef } from "../src/lib/nodusxRequests.ts";
 
 const base: NxListing = {
   id: "1", created_at: "2026-11-28T00:08:18Z", side: "need", kind: "gpu", mw: null, gpus: 1024, gpu_model: "B300", market: "US South Central",
@@ -52,4 +52,18 @@ test("every reply offers the call link and names no prices", () => {
   }
   assert.match(replyText(base, "lot", live).body, /1\. NX-29/);
   assert.match(replyText(base, "lot", live).subject, /NX-29/);
+});
+
+test("ranking: open first, legitimacy counts double, unscreened last", () => {
+  const r = (id: string, req: object) => ({ ...base, id, spec: { req } });
+  const rows = [
+    r("unscreened", {}),
+    r("urgent-unverified", { legit: 1, urgency: 3, category: "referrer" }),
+    r("real-slow", { legit: 3, urgency: 1, category: "supply" }),
+    r("real-buyer", { legit: 3, urgency: 3, category: "direct_buyer" }),
+    r("closed", { legit: 3, urgency: 3, status: "closed" }),
+  ];
+  assert.deepEqual(rankRequests(rows).map((x) => x.id), ["real-buyer", "real-slow", "urgent-unverified", "unscreened", "closed"]);
+  assert.equal(priority(rows[0]), 0);
+  assert.equal(priority(rows[3]), 10);
 });
