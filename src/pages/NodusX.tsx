@@ -6,6 +6,8 @@ import { fmtDateTime } from "../lib/format.ts";
 import { friendlyError } from "../lib/rules.ts";
 import { toast } from "../components/Toast.tsx";
 import NodusXIntros from "./NodusXIntros.tsx";
+import NodusXRequests from "./NodusXRequests.tsx";
+import { isOpen, isRequest } from "../lib/nodusxRequests.ts";
 import { Empty, ErrorBox, Loading, useTitle } from "../components/ui.tsx";
 import {
   DILIGENCE, QUEUES, STATUS_LABEL, ageDays, decisionEmail, forbiddenWords, publicNoteWarnings, summarise,
@@ -35,10 +37,13 @@ export default function NodusX() {
   const [sp, setSp] = useSearchParams();
   const isMap = !sp.get("q") || sp.get("q") === "map";
   const isIntros = sp.get("q") === "intros";
+  const isRequests = sp.get("q") === "requests";
   const queue = QUEUES.find((q) => q.key === sp.get("q")) ?? QUEUES[0];
   const { data, error, loading, reload } = useCached(load, "nodusx:listings", 15_000);
-  const counts = useMemo(() => Object.fromEntries(QUEUES.map((q) => [q.key, (data ?? []).filter((l) => q.statuses.includes(l.status)).length])), [data]);
-  const shown = (data ?? []).filter((l) => queue.statuses.includes(l.status));
+  const listings = useMemo(() => (data ?? []).filter((l) => !isRequest(l)), [data]);
+  const openRequests = useMemo(() => (data ?? []).filter((l) => isRequest(l) && isOpen(l)).length, [data]);
+  const counts = useMemo(() => Object.fromEntries(QUEUES.map((q) => [q.key, listings.filter((l) => q.statuses.includes(l.status)).length])), [listings]);
+  const shown = listings.filter((l) => queue.statuses.includes(l.status));
   const unpublished = (data ?? []).filter((l) => unpublishedChanges(l).length > 0).length;
   const live = (data ?? []).filter((l) => l.status === "approved" || l.status === "verified");
 
@@ -61,9 +66,10 @@ export default function NodusX() {
 
       <nav className="tabs" aria-label="Queue">
         <Link to="/nodusx?q=map" className={isMap ? "active" : undefined}>Match map</Link>
+        <Link to="/nodusx?q=requests" className={isRequests ? "active" : undefined}>Requests ({openRequests} open)</Link>
         <Link to="/nodusx?q=intros" className={isIntros ? "active" : undefined}>Introductions</Link>
         {QUEUES.map((q) => (
-          <Link key={q.key} to={`/nodusx?q=${q.key}`} className={!isMap && !isIntros && q.key === queue.key ? "active" : undefined}>
+          <Link key={q.key} to={`/nodusx?q=${q.key}`} className={!isMap && !isIntros && !isRequests && q.key === queue.key ? "active" : undefined}>
             {q.label} ({counts[q.key] ?? 0}){q.key === "live" && unpublished ? ` · ${unpublished} unpublished` : ""}
           </Link>
         ))}
@@ -79,6 +85,7 @@ export default function NodusX() {
           <iframe title="NodusX match map" src="./nodusx-map/?embed=1" style={{ width: "100%", height: "calc(100vh - 230px)", minHeight: 620, border: "1px solid var(--rule, #ddd)", borderRadius: 8, background: "#EDF1F3" }} />
         </div>
       ) : isIntros ? <NodusXIntros />
+      : isRequests ? <NodusXRequests />
       : error && !data ? <ErrorBox error={error} onRetry={reload} />
         : loading && !data ? <Loading what="Loading submissions…" />
         : shown.length === 0 ? <Empty>{queue.key === "review" ? "Nothing waiting. New submissions appear here the moment they are sent." : "None."}</Empty>

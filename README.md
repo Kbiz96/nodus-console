@@ -47,6 +47,12 @@ Sources, Spend, Import, Search) sits under More. Review (`#/review`) still works
   account, later, other), Edit, Skip, Later, X (dismiss); mandate chips with counts; one email per company (the higher-fit draft first; Send holds the
   others). LinkedIn: Copy & open LinkedIn, then Mark sent (Kuran sends LinkedIn himself). Keys on desktop: S send,
   H hold, E edit, K skip, C copy, L later. Hold has Undo.
+- **NodusX requests** (`#/nodusx?q=requests`): the record of every NodusX request (website "Request for NX-…", emails to
+  nodusx@, RFQs that quote a lot), open first, with a status (new, replied, call booked, screening, options sent, NDA,
+  won, closed), the Gmail thread and the next step, kept in `board_listings.spec.req`. **Reply** writes the fitting reply
+  (options for a named lot, questions for a thin request, "we'll screen" for a full one), always with the booking link;
+  Copy or Open in Gmail. **Add a request from email** logs an email request (`source = nodusx-request`, status `private`).
+  Requests are kept out of the screening queues. Rules in `src/lib/nodusxRequests.ts` (unit-tested).
 - **Priorities** (`#/priorities`): edit, reorder, pause, mark done, add. Writes go straight to `priorities` (RLS).
 - The old cockpit is the **Daily report** at `#/today` (approvals point to Today). Map and Engine leave critical power out by default; the line toggle brings it back
   (`?lines=all` on Map, `?line=all` on Engine).
